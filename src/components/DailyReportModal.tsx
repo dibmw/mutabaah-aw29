@@ -1,0 +1,474 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import { MasterSiswa, LogMutabaah, MasterUser } from '../types';
+import { MutabaahService } from '../services/mutabaahService';
+import { X, Copy, Share2, Calendar, Filter, CheckCircle2, FileText, Send, Check, RefreshCw } from 'lucide-react';
+
+interface DailyReportModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  currentUser: MasterUser | null;
+  siswaList: MasterSiswa[];
+  onToast: (type: 'success' | 'error' | 'info', message: string) => void;
+}
+
+export const DailyReportModal: React.FC<DailyReportModalProps> = ({
+  isOpen,
+  onClose,
+  currentUser,
+  siswaList,
+  onToast
+}) => {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [selectedDate, setSelectedDate] = useState(todayStr);
+  const [selectedClass, setSelectedClass] = useState<string>('Semua Kelas');
+  const [selectedTeacher, setSelectedTeacher] = useState<string>('MY_ACCOUNT');
+  const [isCopied, setIsCopied] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [logsState, setLogsState] = useState<LogMutabaah[]>([]);
+
+  const isKurikulum = useMemo(() => {
+    return currentUser?.Email?.toLowerCase() === 'kurikulum.alwildan29@gmail.com';
+  }, [currentUser]);
+
+  // Sync spreadsheet on modal open or manual trigger
+  const handleSyncSpreadsheet = async (showToast = false) => {
+    setIsSyncing(true);
+    try {
+      await MutabaahService.fetchFromGoogleSheets();
+      if (showToast) {
+        onToast('success', 'Data berhasil disinkronkan dari Google Sheets!');
+      }
+    } catch (e) {
+      console.warn('Sync spreadsheet failed in DailyReportModal', e);
+    } finally {
+      setLogsState(MutabaahService.getLogs());
+      setIsSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      handleSyncSpreadsheet(false);
+    }
+  }, [isOpen]);
+
+  // Sync selected teacher default when currentUser or isKurikulum changes
+  React.useEffect(() => {
+    setSelectedTeacher('MY_ACCOUNT');
+  }, [currentUser, isKurikulum]);
+
+  // Extract unique classes from siswaList, sorted naturally by grade level (Kelas 1, Kelas 2... Kelas 10)
+  const uniqueClasses = useMemo(() => {
+    const classes = Array.from(new Set(siswaList.map(s => s.Kelas).filter(Boolean))).map(c => String(c));
+    classes.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    return ['Semua Kelas', ...classes];
+  }, [siswaList]);
+
+  // Retrieve logs from MutabaahService / local state
+  const allLogs: LogMutabaah[] = useMemo(() => {
+    if (!isOpen) return [];
+    return logsState.length > 0 ? logsState : MutabaahService.getLogs();
+  }, [isOpen, logsState, selectedDate]);
+
+  // List of all teachers (from Master Users + logs) for the filter dropdown
+  const allTeachersList = useMemo(() => {
+    const teachersMap = new Map<string, { key: string; name: string; email: string }>();
+
+    // 1. Add from Master Users
+    try {
+      const users = MutabaahService.getUsers();
+      users.forEach(u => {
+        if (u.Nama_Guru) {
+          const key = (u.Email || u.Nama_Guru).toLowerCase();
+          teachersMap.set(key, { key, name: u.Nama_Guru, email: u.Email || '' });
+        }
+      });
+    } catch (e) {
+      console.warn('Could not load master users for report filter', e);
+    }
+
+    // 2. Add from allLogs
+    allLogs.forEach(log => {
+      if (log.Email_Guru || log.Nama_Guru) {
+        const name = log.Nama_Guru || log.Email_Guru;
+        const email = log.Email_Guru || '';
+        const key = (email || name).toLowerCase();
+        if (!teachersMap.has(key)) {
+          teachersMap.set(key, { key, name, email });
+        }
+      }
+    });
+
+    return Array.from(teachersMap.values());
+  }, [allLogs]);
+
+  // Filtered logs by date, teacher, and class
+  const filteredLogs = useMemo(() => {
+    return allLogs.filter(log => {
+      // 1. Date match
+      const matchDate = log.Tanggal_Mutabaah === selectedDate;
+      if (!matchDate) return false;
+
+      // 2. Teacher match
+      if (!isKurikulum || selectedTeacher === 'MY_ACCOUNT') {
+        if (currentUser) {
+          const userEmail = currentUser.Email?.trim().toLowerCase();
+          const userName = currentUser.Nama_Guru?.trim().toLowerCase();
+          const logEmail = log.Email_Guru?.trim().toLowerCase();
+          const logName = log.Nama_Guru?.trim().toLowerCase();
+
+          const matchByEmail = Boolean(userEmail && logEmail && logEmail === userEmail);
+          const matchByName = Boolean(userName && logName && logName === userName);
+          if (!matchByEmail && !matchByName) return false;
+        }
+      } else if (selectedTeacher !== 'ALL') {
+        const teacherKey = selectedTeacher.trim().toLowerCase();
+        const logEmail = log.Email_Guru?.trim().toLowerCase() || '';
+        const logName = log.Nama_Guru?.trim().toLowerCase() || '';
+
+        const matchByEmail = Boolean(logEmail && logEmail === teacherKey);
+        const matchByName = Boolean(logName && logName === teacherKey);
+        if (!matchByEmail && !matchByName) return false;
+      }
+
+      // 3. Class match
+      if (selectedClass === 'Semua Kelas') return true;
+
+      const studentObj = siswaList.find(s => s.ID_Siswa === log.ID_Siswa);
+      const studentClass = studentObj?.Kelas || '';
+      return studentClass === selectedClass;
+    });
+  }, [allLogs, selectedDate, selectedClass, selectedTeacher, currentUser, siswaList, isKurikulum]);
+
+  // Count unique students for stats
+  const uniqueStudentsCount = useMemo(() => {
+    const studentKeys = new Set(filteredLogs.map(l => (l.ID_Siswa && l.ID_Siswa.trim()) ? l.ID_Siswa.trim() : l.Nama_Siswa.trim()));
+    return studentKeys.size;
+  }, [filteredLogs]);
+
+  // Generate formatted WhatsApp text with per-student stacking
+  const whatsappText = useMemo(() => {
+    // Format date in Indonesian
+    let formattedDate = selectedDate;
+    try {
+      const [year, month, day] = selectedDate.split('-');
+      const dateObj = new Date(Number(year), Number(month) - 1, Number(day));
+      formattedDate = dateObj.toLocaleDateString('id-ID', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    } catch (e) {
+      formattedDate = selectedDate;
+    }
+
+    let teacherName = 'Guru Pengampu';
+    let teacherEmail = '';
+
+    if (!isKurikulum || selectedTeacher === 'MY_ACCOUNT') {
+      teacherName = currentUser ? currentUser.Nama_Guru : 'Guru Pengampu';
+      teacherEmail = currentUser ? currentUser.Email : '';
+    } else if (selectedTeacher === 'ALL') {
+      teacherName = 'Semua Guru';
+      teacherEmail = '';
+    } else {
+      const selectedObj = allTeachersList.find(t => t.key === selectedTeacher.toLowerCase());
+      if (selectedObj) {
+        teacherName = selectedObj.name;
+        teacherEmail = selectedObj.email;
+      } else {
+        teacherName = 'Guru Pengampu';
+      }
+    }
+
+    // Group logs by ID_Siswa
+    const studentGroupMap = new Map<string, { idSiswa: string; namaSiswa: string; kelas: string; logs: LogMutabaah[] }>();
+
+    filteredLogs.forEach((log) => {
+      const key = (log.ID_Siswa && log.ID_Siswa.trim()) ? log.ID_Siswa.trim() : log.Nama_Siswa.trim();
+      if (!studentGroupMap.has(key)) {
+        const matchedSiswa = siswaList.find(s => (s.ID_Siswa && s.ID_Siswa.trim() === log.ID_Siswa?.trim()) || s.Nama_Siswa.trim() === log.Nama_Siswa.trim());
+        const kelasName = log.Kelas || matchedSiswa?.Kelas || '-';
+
+        studentGroupMap.set(key, {
+          idSiswa: log.ID_Siswa || '-',
+          namaSiswa: log.Nama_Siswa || 'Siswa',
+          kelas: kelasName,
+          logs: []
+        });
+      }
+      studentGroupMap.get(key)!.logs.push(log);
+    });
+
+    const groupedStudents = Array.from(studentGroupMap.values());
+
+    let text = `📋 *LAPORAN HARIAN MUTABAAH AL-QUR'AN*\n`;
+    text += `🏫 *AL-WILDAN ISLAMIC SCHOOL 29 DEPOK*\n`;
+    text += `📅 *Tanggal:* ${formattedDate}\n`;
+    text += `👨‍🏫 *Guru:* ${teacherName}\n`;
+    text += `🏫 *Kelas:* ${selectedClass}\n`;
+    text += `📊 *Total Siswa:* ${groupedStudents.length} Siswa\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+    text += `📝 *RINCIAN HARIAN PER SISWA:*\n\n`;
+
+    if (groupedStudents.length === 0) {
+      text += `_(Belum ada data mutabaah yang diinput pada tanggal dan kelas ini)_\n`;
+    } else {
+      const isSemuaKelas = selectedClass === 'Semua Kelas';
+      groupedStudents.forEach((st, index) => {
+        const classInfoStr = isSemuaKelas ? `, Kelas: ${st.kelas}` : '';
+        text += `${index + 1}. *${st.namaSiswa}* (NIS: ${st.idSiswa}${classInfoStr})\n`;
+
+        // Nilai Sikap / Kehadiran (unique values across student's logs)
+        const kehadiranList = Array.from(new Set(st.logs.map(l => l.Kehadiran).filter(Boolean)));
+        const kehadiranStr = kehadiranList.length > 0 ? kehadiranList.join(', ') : 'A';
+        text += `   • Nilai Sikap: ${kehadiranStr}\n`;
+
+        // Formatted setoran items
+        const formatSetoran = (log: LogMutabaah): string => {
+          if (log.Tahsin_Rujukan || log.Tahsin_Capaian_SuratBab) {
+            return `Tahsin [${log.Tahsin_Rujukan || "Al-Qur'an"}]: ${log.Tahsin_Capaian_SuratBab || '-'} ${log.Tahsin_Capaian_Detail ? `(${log.Tahsin_Capaian_Detail})` : ''} ${log.Tahsin_Nilai !== null && log.Tahsin_Nilai !== undefined ? `| Nilai: ${log.Tahsin_Nilai}` : ''}`;
+          } else if (log.Tahfidh_Jenis || log.Tahfidh_Surat) {
+            return `Tahfidh [${log.Tahfidh_Jenis || 'Hafalan'}]: Surat ${log.Tahfidh_Surat || '-'} ${log.Tahfidh_Ayat ? `(${log.Tahfidh_Ayat})` : ''} ${log.Tahfidh_Nilai !== null && log.Tahfidh_Nilai !== undefined ? `| Nilai: ${log.Tahfidh_Nilai}` : ''}`;
+          } else if (log.Tajwid_Jenis || log.Tajwid_Capaian) {
+            return `Tajwid [${log.Tajwid_Jenis || 'Metode'}]: ${log.Tajwid_Capaian || '-'} ${log.Tajwid_Nilai !== null && log.Tajwid_Nilai !== undefined ? `| Nilai: ${log.Tajwid_Nilai}` : ''}`;
+          }
+          return 'Tidak ada setoran';
+        };
+
+        const setoranEntries = st.logs.map(formatSetoran);
+        if (setoranEntries.length === 1) {
+          text += `   • Setoran: ${setoranEntries[0]}\n`;
+        } else {
+          text += `   • Setoran (${setoranEntries.length} Setoran):\n`;
+          setoranEntries.forEach((sText, sIdx) => {
+            text += `     ${sIdx + 1}) ${sText}\n`;
+          });
+        }
+
+        // Catatan Guru (combine unique non-empty notes)
+        const notes = Array.from(new Set(st.logs.map(l => l.Catatan?.trim()).filter(Boolean)));
+        if (notes.length > 0) {
+          text += `   • Catatan Guru: ${notes.join('; ')}\n`;
+        }
+        text += `\n`;
+      });
+    }
+
+    text += `━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `_Syukran jazaakumullahu khairan wa baarakallahu fiikum_`;
+
+    return text;
+  }, [selectedDate, selectedClass, filteredLogs, currentUser, isKurikulum, selectedTeacher, allTeachersList]);
+
+  if (!isOpen) return null;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(whatsappText);
+    setIsCopied(true);
+    onToast('success', 'Laporan harian berhasil dicopy ke clipboard! Siap dipaste ke WhatsApp.');
+    setTimeout(() => setIsCopied(false), 2500);
+  };
+
+  const handleOpenWhatsApp = () => {
+    const encoded = encodeURIComponent(whatsappText);
+    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-0 sm:p-4 animate-fade-in">
+      <div className="bg-white w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-2xl sm:rounded-2xl shadow-2xl border-0 sm:border border-slate-200 overflow-hidden flex flex-col">
+        
+        {/* Header Modal */}
+        <div className="bg-[#1E3A8A] text-white px-4 sm:px-6 py-3.5 sm:py-4 border-b-2 border-[#D97706] flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-[#F59E0B] text-[#1E3A8A] flex items-center justify-center font-black shrink-0 shadow-sm">
+              <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-extrabold tracking-tight flex items-center gap-2">
+                Laporan Harian WhatsApp
+                <span className="hidden sm:inline-block bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-400/30">
+                  WA Ready
+                </span>
+              </h3>
+              <p className="text-[11px] sm:text-xs text-blue-200 line-clamp-1">
+                Generate rekap mutabaah harian kelas untuk dipaste ke grup WA
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="text-blue-200 hover:text-white p-2 rounded-xl hover:bg-blue-800/80 transition-colors min-w-[38px] min-h-[38px] flex items-center justify-center"
+            title="Tutup Modal"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Filter Toolbar */}
+        <div className="p-3 sm:p-4 bg-slate-50 border-b border-slate-200/80 shrink-0">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+            <div>
+              <label className="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-[#D97706]" />
+                Tanggal Mutabaah
+              </label>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:ring-2 focus:ring-[#1E3A8A] min-h-[42px] shadow-2xs"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5 text-emerald-600" />
+                Filter Guru Pengampu
+              </label>
+              {isKurikulum ? (
+                <select
+                  value={selectedTeacher}
+                  onChange={(e) => setSelectedTeacher(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:ring-2 focus:ring-[#1E3A8A] min-h-[42px] shadow-2xs"
+                >
+                  <option value="MY_ACCOUNT">
+                    Saya ({currentUser?.Nama_Guru || 'Kurikulum'})
+                  </option>
+                  <option value="ALL">Semua Guru</option>
+                  {allTeachersList
+                    .filter(t => {
+                      if (!currentUser) return true;
+                      const isCurrent = (currentUser.Email && t.email.toLowerCase() === currentUser.Email.toLowerCase()) ||
+                                        (currentUser.Nama_Guru && t.name.toLowerCase() === currentUser.Nama_Guru.toLowerCase());
+                      return !isCurrent;
+                    })
+                    .map(t => (
+                      <option key={t.key} value={t.key}>
+                        {t.name}
+                      </option>
+                    ))}
+                </select>
+              ) : (
+                <select
+                  disabled
+                  value="MY_ACCOUNT"
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-xl text-xs sm:text-sm font-bold text-slate-600 min-h-[42px] shadow-2xs cursor-not-allowed"
+                >
+                  <option value="MY_ACCOUNT">
+                    {currentUser?.Nama_Guru || 'Guru Pengampu'}
+                  </option>
+                </select>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5 text-[#1E3A8A]" />
+                Filter Kelas
+              </label>
+              <select
+                value={selectedClass}
+                onChange={(e) => setSelectedClass(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:ring-2 focus:ring-[#1E3A8A] min-h-[42px] shadow-2xs"
+              >
+                {uniqueClasses.map((cls) => (
+                  <option key={cls} value={cls}>
+                    {cls}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Content Body */}
+        <div className="p-3.5 sm:p-5 flex-1 overflow-y-auto space-y-3.5 bg-slate-50">
+          
+          {/* Quick Stats Banner */}
+          <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs flex items-center justify-between gap-2">
+            <div>
+              <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider block">Total Rekap Mutabaah</span>
+              <span className="text-sm sm:text-base font-extrabold text-[#1E3A8A]">
+                {uniqueStudentsCount} Siswa <span className="text-xs font-semibold text-slate-500">({filteredLogs.length} Entry Mutabaah)</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleSyncSpreadsheet(true)}
+                disabled={isSyncing}
+                title="Sinkronkan data dari Google Sheet sekarang"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-[#1E3A8A] rounded-lg border border-blue-200 transition-all active:scale-95 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">{isSyncing ? 'Memuat...' : 'Sinkron Spreadsheet'}</span>
+              </button>
+              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 shrink-0">
+                {selectedClass}
+              </span>
+            </div>
+          </div>
+
+          {/* Section Label */}
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-[#1E3A8A]" />
+              Pesan Laporan WhatsApp
+            </span>
+            <span className="text-[10px] sm:text-xs text-slate-500 font-medium bg-white px-2.5 py-0.5 rounded-full border border-slate-200">
+              Format Teks Asli
+            </span>
+          </div>
+
+          {/* Plain Text Display Box */}
+          <div className="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-xs sm:text-sm leading-relaxed whitespace-pre-wrap select-all border border-slate-800 shadow-inner max-h-[340px] sm:max-h-[380px] overflow-y-auto">
+            {whatsappText}
+          </div>
+        </div>
+
+        {/* Footer Action Buttons */}
+        <div className="p-3.5 sm:p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+          <div className="text-xs text-slate-500 font-medium text-center sm:text-left hidden sm:block">
+            Tekan <span className="font-bold text-slate-700">Copy ke Clipboard</span> lalu paste langsung ke aplikasi WhatsApp.
+          </div>
+
+          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+            <button
+              onClick={handleCopy}
+              className={`flex-1 sm:flex-initial px-4 py-3 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 min-h-[44px] ${
+                isCopied
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-[#1E3A8A] hover:bg-blue-900 text-white border border-[#F59E0B]/40'
+              }`}
+            >
+              {isCopied ? (
+                <>
+                  <Check className="w-4 h-4 text-emerald-300" />
+                  Berhasil Dicopy!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4 text-[#F59E0B]" />
+                  Copy ke Clipboard
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleOpenWhatsApp}
+              className="flex-1 sm:flex-initial px-4 py-3 sm:py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs sm:text-sm rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 border border-emerald-400/40 min-h-[44px]"
+            >
+              <Send className="w-4 h-4" />
+              Buka WhatsApp
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+};

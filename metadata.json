@@ -1,0 +1,6 @@
+{
+  "name": "Sistem Input Mutabaah Al-Qur'an Siswa",
+  "description": "Aplikasi Sistem Input Mutabaah Al-Qur'an Siswa untuk pencatatan kehadiran, tahsin, tahfidh, tajwid, dan catatan perkembangan harian siswa.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
