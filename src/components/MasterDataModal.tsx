@@ -26,6 +26,7 @@ export const MasterDataModal: React.FC<MasterDataModalProps> = ({
   const [newNama, setNewNama] = useState('');
   const [newKelas, setNewKelas] = useState('Kelas 7A');
   const [newHalaqah, setNewHalaqah] = useState('Halaqah Abu Bakar');
+  const [newGender, setNewGender] = useState('Laki-laki');
   const [isSuccessMsg, setIsSuccessMsg] = useState('');
 
   if (!isOpen) return null;
@@ -38,7 +39,8 @@ export const MasterDataModal: React.FC<MasterDataModalProps> = ({
       ID_Siswa: newNis.trim(), // NIS Primary Key
       Nama_Siswa: newNama.trim(),
       Kelas: newKelas,
-      Kelompok_Halaqah: newHalaqah
+      Kelompok_Halaqah: newHalaqah,
+      Gender: newGender
     };
 
     onAddSiswa(newStudent);
@@ -181,6 +183,22 @@ export const MasterDataModal: React.FC<MasterDataModalProps> = ({
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Gender
+                    </label>
+                    <select
+                      value={newGender}
+                      onChange={(e) => setNewGender(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-[#1E3A8A]"
+                    >
+                      <option value="Laki-laki">Laki-laki</option>
+                      <option value="Perempuan">Perempuan</option>
+                    </select>
+                  </div>
+                </div>
+
                 <button
                   type="submit"
                   className="mt-3 px-4 py-2 bg-[#1E3A8A] hover:bg-blue-900 text-white font-bold rounded-lg shadow transition-all flex items-center gap-1.5 text-xs"
@@ -198,6 +216,7 @@ export const MasterDataModal: React.FC<MasterDataModalProps> = ({
                       <th className="py-2.5 px-3">NIS (ID_Siswa)</th>
                       <th className="py-2.5 px-3">Nama Siswa</th>
                       <th className="py-2.5 px-3">Kelas</th>
+                      <th className="py-2.5 px-3">Gender</th>
                       <th className="py-2.5 px-3 text-right">Format Option Search</th>
                     </tr>
                   </thead>
@@ -212,6 +231,9 @@ export const MasterDataModal: React.FC<MasterDataModalProps> = ({
                         </td>
                         <td className="py-2.5 px-3 font-semibold text-slate-700">
                           {s.Kelas}
+                        </td>
+                        <td className="py-2.5 px-3 font-semibold text-slate-700">
+                          {s.Gender}
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono text-[10px] text-slate-500">
                           {s.Nama_Siswa} - NIS: {s.ID_Siswa} ({s.Kelas})
@@ -335,7 +357,7 @@ export const MasterDataModal: React.FC<MasterDataModalProps> = ({
                 </p>
                 <ul className="list-disc list-inside space-y-1 text-slate-600 font-medium pl-2">
                   <li><strong className="text-slate-800">Master_User</strong> (ID_User, Email, Nama_Guru)</li>
-                  <li><strong className="text-slate-800">Master_Siswa</strong> (ID_Siswa [NIS], Nama_Siswa, Kelas, Kelompok_Halaqah)</li>
+                  <li><strong className="text-slate-800">Master_Siswa</strong> (ID_Siswa [NIS], Nama_Siswa, Kelas, Gender)</li>
                   <li><strong className="text-slate-800">Master_Surat</strong> (No_Surat, Nama_Surat, Jumlah_Ayat)</li>
                   <li><strong className="text-slate-800">Log_Mutabaah</strong> (ID_Log, Timestamp, Tanggal_Mutabaah, Email_Guru, Nama_Guru, ID_Siswa [NIS], Nama_Siswa, Kehadiran, Tahsin_Rujukan, Tahsin_Capaian_SuratBab, Tahsin_Capaian_Detail, Tahsin_Nilai, Tahfidh_Jenis, Tahfidh_Surat, Tahfidh_Ayat, Tahfidh_Nilai, Tajwid_Jenis, Tajwid_Capaian, Tajwid_Nilai, Catatan)</li>
                 </ul>

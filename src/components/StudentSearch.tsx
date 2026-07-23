@@ -15,6 +15,7 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [classFilter, setClassFilter] = useState('ALL');
+  const [genderFilter, setGenderFilter] = useState('ALL');
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -22,6 +23,11 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
   const classes = Array.from(new Set(siswaList.map(s => s.Kelas).filter(Boolean)))
     .map(c => String(c))
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+  // Extract unique genders for filter
+  const genders = Array.from(new Set(siswaList.map(s => s.Gender).filter(Boolean)))
+    .map(g => String(g))
+    .sort();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -34,7 +40,7 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filter students by Search Term (Name, NIS, Class, Halaqah) and Class Filter
+  // Filter students by Search Term (Name, NIS, Class, Halaqah), Class Filter, and Gender Filter
   const filteredSiswa = siswaList.filter(s => {
     const matchesSearch = 
       s.Nama_Siswa.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -43,8 +49,9 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
       (s.Kelompok_Halaqah && s.Kelompok_Halaqah.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesClass = classFilter === 'ALL' || s.Kelas === classFilter;
+    const matchesGender = genderFilter === 'ALL' || s.Gender === genderFilter;
 
-    return matchesSearch && matchesClass;
+    return matchesSearch && matchesClass && matchesGender;
   });
 
   // Check if ALL currently filtered students are selected
@@ -118,7 +125,7 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
           </div>
         </div>
 
-        {/* Filter Kelas & Quick Checkbox Sekelas */}
+        {/* Filter Kelas, Filter Gender & Quick Checkbox Sekelas */}
         <div className="grid grid-cols-1 xs:grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-2.5 w-full md:w-auto">
           <div className="flex items-center justify-between sm:justify-start gap-2 bg-slate-100 hover:bg-slate-200/80 border border-slate-300 rounded-xl px-3 py-2 transition-colors min-h-[40px]">
             <div className="flex items-center gap-1.5 min-w-0">
@@ -137,6 +144,23 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
             </select>
           </div>
 
+          <div className="flex items-center justify-between sm:justify-start gap-2 bg-slate-100 hover:bg-slate-200/80 border border-slate-300 rounded-xl px-3 py-2 transition-colors min-h-[40px]">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <span className="text-xs font-bold text-slate-700 whitespace-nowrap">Gender:</span>
+            </div>
+            <select
+              value={genderFilter}
+              onChange={(e) => setGenderFilter(e.target.value)}
+              className="text-xs font-extrabold text-[#1E3A8A] bg-transparent focus:outline-none cursor-pointer text-right sm:text-left pr-1 min-w-0 truncate"
+            >
+              <option value="ALL">Semua</option>
+              {genders.map(g => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Quick Checkbox Sekelas */}
           <button
             type="button"
@@ -147,7 +171,7 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
                 ? 'bg-[#1E3A8A] text-white border-blue-900 shadow-xs'
                 : 'bg-blue-50 text-[#1E3A8A] border-blue-200 hover:bg-blue-100/80'
             } ${filteredSiswa.length === 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-            title={classFilter !== 'ALL' ? `Centang untuk memilih seluruh siswa di Kelas ${classFilter}` : 'Centang untuk memilih semua siswa'}
+            title={classFilter !== 'ALL' || genderFilter !== 'ALL' ? `Centang untuk memilih seluruh siswa yang sudah difilter` : 'Centang untuk memilih semua siswa'}
           >
             <input
               type="checkbox"
@@ -156,7 +180,7 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
               className="w-4 h-4 text-[#1E3A8A] rounded border-slate-300 focus:ring-[#1E3A8A] cursor-pointer"
             />
             <span className="truncate">
-              {classFilter !== 'ALL' ? `Pilih Sekelas (${filteredSiswa.length})` : `Pilih Semua (${filteredSiswa.length})`}
+              {classFilter !== 'ALL' || genderFilter !== 'ALL' ? `Pilih Yang Tampil (${filteredSiswa.length})` : `Pilih Semua (${filteredSiswa.length})`}
             </span>
           </button>
         </div>
@@ -223,7 +247,7 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
                   className="w-4 h-4 text-[#1E3A8A] rounded border-slate-300 focus:ring-[#1E3A8A] cursor-pointer"
                 />
                 <span>
-                  Pilih Semua ({filteredSiswa.length} Siswa {classFilter !== 'ALL' ? `Kelas ${classFilter}` : ''})
+                  Pilih Semua ({filteredSiswa.length} Siswa{classFilter !== 'ALL' ? ` Kelas ${classFilter}` : ''}{genderFilter !== 'ALL' ? ` ${genderFilter}` : ''})
                 </span>
               </label>
               <span className="text-[11px] font-extrabold text-[#1E3A8A] bg-blue-100 px-2.5 py-0.5 rounded-full">

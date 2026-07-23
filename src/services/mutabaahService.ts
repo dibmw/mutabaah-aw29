@@ -466,7 +466,8 @@ export class MutabaahService {
                       ID_Siswa: cols[0].trim(),
                       Nama_Siswa: cols[1].trim(),
                       Kelas: cols[2] ? cols[2].trim() : "Kelas 1",
-                      Kelompok_Halaqah: cols[3] ? cols[3].trim() : "Halaqah Umum"
+                      Kelompok_Halaqah: "",
+                      Gender: cols[3] ? cols[3].trim() : ""
                     });
                   }
                 }

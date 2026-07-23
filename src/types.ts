@@ -9,6 +9,7 @@ export interface MasterSiswa {
   Nama_Siswa: string;
   Kelas: string;
   Kelompok_Halaqah: string;
+  Gender: string;
 }
 
 export interface MasterSurat {

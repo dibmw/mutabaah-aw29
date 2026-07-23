@@ -28,43 +28,50 @@ export const INITIAL_SISWA: MasterSiswa[] = [
     ID_Siswa: "12345678",
     Nama_Siswa: "Ahmad Fauzan",
     Kelas: "Kelas 7A",
-    Kelompok_Halaqah: "Halaqah Abu Bakar"
+    Kelompok_Halaqah: "Halaqah Abu Bakar",
+    Gender: "Laki-laki"
   },
   {
     ID_Siswa: "12345679",
     Nama_Siswa: "Muhammad Rayhan Al-Fatih",
     Kelas: "Kelas 7A",
-    Kelompok_Halaqah: "Halaqah Abu Bakar"
+    Kelompok_Halaqah: "Halaqah Abu Bakar",
+    Gender: "Laki-laki"
   },
   {
     ID_Siswa: "12345680",
     Nama_Siswa: "Ibrahim Hafiz",
     Kelas: "Kelas 7B",
-    Kelompok_Halaqah: "Halaqah Umar bin Khattab"
+    Kelompok_Halaqah: "Halaqah Umar bin Khattab",
+    Gender: "Laki-laki"
   },
   {
     ID_Siswa: "12345681",
     Nama_Siswa: "Aisyah Humaira",
     Kelas: "Kelas 8A",
-    Kelompok_Halaqah: "Halaqah Utsman bin Affan"
+    Kelompok_Halaqah: "Halaqah Utsman bin Affan",
+    Gender: "Perempuan"
   },
   {
     ID_Siswa: "12345682",
     Nama_Siswa: "Zaid bin Haritsah",
     Kelas: "Kelas 8B",
-    Kelompok_Halaqah: "Halaqah Ali bin Abi Thalib"
+    Kelompok_Halaqah: "Halaqah Ali bin Abi Thalib",
+    Gender: "Laki-laki"
   },
   {
     ID_Siswa: "12345683",
     Nama_Siswa: "Maryam An-Nisa",
     Kelas: "Kelas 9A",
-    Kelompok_Halaqah: "Halaqah Khadijah"
+    Kelompok_Halaqah: "Halaqah Khadijah",
+    Gender: "Perempuan"
   },
   {
     ID_Siswa: "12345684",
     Nama_Siswa: "Abdullah Azzam",
     Kelas: "Kelas 9B",
-    Kelompok_Halaqah: "Halaqah Umar bin Khattab"
+    Kelompok_Halaqah: "Halaqah Umar bin Khattab",
+    Gender: "Laki-laki"
   }
 ];
 
