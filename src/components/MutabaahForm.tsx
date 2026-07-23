@@ -804,9 +804,9 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                 <>
                   <Save className="w-4 h-4 text-[#F59E0B]" />
                   {selectedSiswaList.length > 1
-                    ? `Simpan Mutabaah Massal (${selectedSiswaList.length} Siswa)`
+                    ? 'Simpan Mutabaah Massal'
                     : selectedSiswaList.length === 1
-                    ? `Simpan Mutabaah (${selectedSiswaList[0].Nama_Siswa})`
+                    ? 'Simpan Mutabaah'
                     : 'Pilih Siswa Terlebih Dahulu'}
                 </>
               )}
