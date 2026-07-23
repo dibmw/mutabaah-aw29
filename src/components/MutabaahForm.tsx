@@ -300,9 +300,9 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
               </span>
             </div>
 
-            <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-end gap-3">
               {/* Tanggal Mutabaah */}
-              <div>
+              <div className="flex-1">
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Tanggal Mutabaah
                 </label>
@@ -310,20 +310,20 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                   type="date"
                   value={tanggal}
                   onChange={(e) => setTanggal(e.target.value)}
-                  className="w-full sm:w-1/2 px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-[#1E3A8A] focus:outline-none min-h-[42px]"
+                  className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-[#1E3A8A] focus:outline-none min-h-[42px]"
                   required
                 />
               </div>
 
               {/* Status Kehadiran Dropdown */}
-              <div>
+              <div className="flex-1 sm:flex-none sm:w-48">
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Status Kehadiran <span className="text-rose-600">*</span>
                 </label>
                 <select
                   value={kehadiran}
                   onChange={(e) => setKehadiran(e.target.value as AttendanceType)}
-                  className="w-full sm:w-1/2 px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:ring-2 focus:ring-[#1E3A8A] focus:outline-none min-h-[42px]"
+                  className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:ring-2 focus:ring-[#1E3A8A] focus:outline-none min-h-[42px]"
                   required
                 >
                   <option value="A">A</option>
