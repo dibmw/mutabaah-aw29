@@ -221,37 +221,72 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
         const classInfoStr = isSemuaKelas ? `, Kelas: ${st.kelas}` : '';
         text += `${index + 1}. *${st.namaSiswa}* (NIS: ${st.idSiswa}${classInfoStr})\n`;
 
-        // Nilai Sikap / Kehadiran (unique values across student's logs)
-        const kehadiranList = Array.from(new Set(st.logs.map(l => l.Kehadiran).filter(Boolean)));
-        const kehadiranStr = kehadiranList.length > 0 ? kehadiranList.join(', ') : 'A';
-        text += `   • Nilai Sikap: ${kehadiranStr}\n`;
-
-        // Formatted setoran items
-        const formatSetoran = (log: LogMutabaah): string => {
+        const formatSetoranDetail = (log: LogMutabaah): string[] => {
+          const lines: string[] = [];
           if (log.Tahsin_Rujukan || log.Tahsin_Capaian_SuratBab) {
-            return `Tahsin [${log.Tahsin_Rujukan || "Al-Qur'an"}]: ${log.Tahsin_Capaian_SuratBab || '-'} ${log.Tahsin_Capaian_Detail ? `(${log.Tahsin_Capaian_Detail})` : ''} ${log.Tahsin_Nilai !== null && log.Tahsin_Nilai !== undefined ? `| Nilai: ${log.Tahsin_Nilai}` : ''}`;
+            lines.push(`   • Tahsin [${log.Tahsin_Rujukan || "Al-Qur'an"}]:`);
+            lines.push(`     - Capaian: ${log.Tahsin_Capaian_SuratBab || '-'}`);
+            if (log.Tahsin_Capaian_Detail) {
+              lines.push(`     - Detail: ${log.Tahsin_Capaian_Detail}`);
+            }
+            if (log.Tahsin_Nilai !== null && log.Tahsin_Nilai !== undefined) {
+              lines.push(`     - Nilai: ${log.Tahsin_Nilai}`);
+            }
           } else if (log.Tahfidh_Jenis || log.Tahfidh_Surat) {
-            return `Tahfidh [${log.Tahfidh_Jenis || 'Hafalan'}]: Surat ${log.Tahfidh_Surat || '-'} ${log.Tahfidh_Ayat ? `(${log.Tahfidh_Ayat})` : ''} ${log.Tahfidh_Nilai !== null && log.Tahfidh_Nilai !== undefined ? `| Nilai: ${log.Tahfidh_Nilai}` : ''}`;
+            lines.push(`   • Tahfidh [${log.Tahfidh_Jenis || 'Hafalan'}]:`);
+            lines.push(`     - Surat: ${log.Tahfidh_Surat || '-'}`);
+            if (log.Tahfidh_Ayat) {
+              lines.push(`     - Ayat: ${log.Tahfidh_Ayat}`);
+            }
+            if (log.Tahfidh_Nilai !== null && log.Tahfidh_Nilai !== undefined) {
+              lines.push(`     - Nilai: ${log.Tahfidh_Nilai}`);
+            }
           } else if (log.Tajwid_Jenis || log.Tajwid_Capaian) {
-            return `Tajwid [${log.Tajwid_Jenis || 'Metode'}]: ${log.Tajwid_Capaian || '-'} ${log.Tajwid_Nilai !== null && log.Tajwid_Nilai !== undefined ? `| Nilai: ${log.Tajwid_Nilai}` : ''}`;
+            lines.push(`   • Tajwid [${log.Tajwid_Jenis || 'Metode'}]:`);
+            lines.push(`     - Capaian: ${log.Tajwid_Capaian || '-'}`);
+            if (log.Tajwid_Nilai !== null && log.Tajwid_Nilai !== undefined) {
+              lines.push(`     - Nilai: ${log.Tajwid_Nilai}`);
+            }
           }
-          return 'Tidak ada setoran';
+          return lines;
         };
 
-        const setoranEntries = st.logs.map(formatSetoran);
-        if (setoranEntries.length === 1) {
-          text += `   • Setoran: ${setoranEntries[0]}\n`;
-        } else {
-          text += `   • Setoran (${setoranEntries.length} Setoran):\n`;
-          setoranEntries.forEach((sText, sIdx) => {
-            text += `     ${sIdx + 1}) ${sText}\n`;
-          });
-        }
+        if (st.logs.length === 1) {
+          const log = st.logs[0];
+          const kehadiran = log.Kehadiran || 'A';
+          text += `   • Sikap: ${kehadiran}\n`;
 
-        // Catatan Guru (combine unique non-empty notes)
-        const notes = Array.from(new Set(st.logs.map(l => l.Catatan?.trim()).filter(Boolean)));
-        if (notes.length > 0) {
-          text += `   • Catatan Guru: ${notes.join('; ')}\n`;
+          const setoranLines = formatSetoranDetail(log);
+          if (setoranLines.length > 0) {
+            setoranLines.forEach(l => { text += `${l}\n`; });
+          } else {
+            text += `   • Setoran: Tidak ada setoran\n`;
+          }
+
+          if (log.Catatan?.trim()) {
+            text += `   • Catatan: ${log.Catatan.trim()}\n`;
+          }
+        } else {
+          text += `   ───────────────────────────\n`;
+          st.logs.forEach((log, logIdx) => {
+            text += `   ▸ Input #${logIdx + 1}\n`;
+            const kehadiran = log.Kehadiran || 'A';
+            text += `   • Sikap: ${kehadiran}\n`;
+
+            const setoranLines = formatSetoranDetail(log);
+            if (setoranLines.length > 0) {
+              setoranLines.forEach(l => { text += `${l}\n`; });
+            } else {
+              text += `   • Setoran: Tidak ada setoran\n`;
+            }
+
+            if (log.Catatan?.trim()) {
+              text += `   • Catatan: ${log.Catatan.trim()}\n`;
+            }
+            if (logIdx < st.logs.length - 1) {
+              text += `\n`;
+            }
+          });
         }
         text += `\n`;
       });

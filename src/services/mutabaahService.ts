@@ -11,7 +11,8 @@ const STORAGE_KEYS = {
   SURAT: 'mutabaah_master_surat_v1',
   LOGS: 'mutabaah_logs_v1',
   CURRENT_USER: 'mutabaah_current_user_v1',
-  WEBHOOK_URL: 'mutabaah_google_script_url_v1'
+  WEBHOOK_URL: 'mutabaah_google_script_url_v1',
+  PENDING_LOGS: 'mutabaah_pending_logs_v1'
 };
 
 // Helper to parse simple CSV text safely
@@ -350,6 +351,78 @@ export class MutabaahService {
     }
   }
 
+  // Pending logs queue (webhook retry)
+  static getPendingLogs(): LogMutabaah[] {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.PENDING_LOGS);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  static getPendingLogsCount(): number {
+    return this.getPendingLogs().length;
+  }
+
+  private static savePendingLogs(logs: LogMutabaah[]): void {
+    if (logs.length > 0) {
+      localStorage.setItem(STORAGE_KEYS.PENDING_LOGS, JSON.stringify(logs));
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.PENDING_LOGS);
+    }
+  }
+
+  private static addToPendingLogs(logs: LogMutabaah[]): void {
+    const existing = this.getPendingLogs();
+    const existingIds = new Set(existing.map(l => l.ID_Log));
+    const newUnique = logs.filter(l => !existingIds.has(l.ID_Log));
+    this.savePendingLogs([...existing, ...newUnique]);
+  }
+
+  static async retryPendingLogs(): Promise<{ success: number; failed: number }> {
+    const pending = this.getPendingLogs();
+    if (pending.length === 0) return { success: 0, failed: 0 };
+
+    const url = this.getWebhookUrl();
+    if (!url) return { success: 0, failed: pending.length };
+
+    let success = 0;
+    let failed = 0;
+    const stillPending: LogMutabaah[] = [];
+    const CHUNK_SIZE = 3;
+
+    for (let i = 0; i < pending.length; i += CHUNK_SIZE) {
+      const chunk = pending.slice(i, i + CHUNK_SIZE);
+      const results = await Promise.allSettled(
+        chunk.map(log =>
+          fetch(url, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(log)
+          })
+        )
+      );
+
+      results.forEach((result, idx) => {
+        if (result.status === 'fulfilled') {
+          success++;
+        } else {
+          failed++;
+          stillPending.push(chunk[idx]);
+        }
+      });
+
+      if (i + CHUNK_SIZE < pending.length) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
+
+    this.savePendingLogs(stillPending);
+    return { success, failed };
+  }
+
   private static async sendToWebhook(log: LogMutabaah): Promise<void> {
     const url = this.getWebhookUrl();
     if (!url) return;
@@ -361,7 +434,8 @@ export class MutabaahService {
         body: JSON.stringify(log)
       });
     } catch (e) {
-      console.warn('Webhook post to Google Sheets failed:', e);
+      console.warn('Webhook post failed, adding to pending queue:', log.ID_Log, e);
+      this.addToPendingLogs([log]);
     }
   }
 
@@ -369,26 +443,36 @@ export class MutabaahService {
     const url = this.getWebhookUrl();
     if (!url || logs.length === 0) return;
 
-    // Kirim setiap data log EXACTLY ONCE secara terukur (chunk size 2-3 dengan jeda 80ms)
-    // Ini mencegah data terduplikasi dan memastikan Google Apps Script dapat memproses data dengan cepat & akurat
-    const CHUNK_SIZE = 2;
+    const CHUNK_SIZE = 3;
+    const failedLogs: LogMutabaah[] = [];
+
     for (let i = 0; i < logs.length; i += CHUNK_SIZE) {
       const chunk = logs.slice(i, i + CHUNK_SIZE);
-      await Promise.allSettled(
+      const results = await Promise.allSettled(
         chunk.map(log =>
           fetch(url, {
             method: 'POST',
             mode: 'no-cors',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(log)
-          }).catch(err => console.warn(`Log ${log.ID_Log} post failed:`, err))
+          })
         )
       );
 
-      // Jeda 80ms antar batch kecil agar Google Apps Script lock dapat bergiliran dengan stabil
+      results.forEach((result, idx) => {
+        if (result.status === 'rejected') {
+          console.warn(`Log ${chunk[idx].ID_Log} post failed:`, result.reason);
+          failedLogs.push(chunk[idx]);
+        }
+      });
+
       if (i + CHUNK_SIZE < logs.length) {
-        await new Promise(resolve => setTimeout(resolve, 80));
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
+    }
+
+    if (failedLogs.length > 0) {
+      this.addToPendingLogs(failedLogs);
     }
   }
 
@@ -505,7 +589,14 @@ export class MutabaahService {
                     });
                   }
                 }
-                localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(logsFromSheet));
+                // Merge: sheet logs + orphan pending logs (pending logs not yet in sheet)
+                const sheetLogIds = new Set(logsFromSheet.map(l => l.ID_Log));
+                const orphanPending = this.getPendingLogs().filter(l => !sheetLogIds.has(l.ID_Log));
+                const mergedLogs = [...logsFromSheet, ...orphanPending];
+                localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(mergedLogs));
+
+                // Clean pending queue: remove logs already in sheet
+                this.savePendingLogs(orphanPending);
               }
             }
           }
