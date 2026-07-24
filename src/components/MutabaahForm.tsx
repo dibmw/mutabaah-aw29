@@ -47,8 +47,8 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
 
   // Details for Setoran Tahfidh
   const [tahfidhJenis, setTahfidhJenis] = useState<TahfidhType>('Hafalan Baru (Ziyadah)');
-  const [tahfidhSuratMulai, setTahfidhSuratMulai] = useState('An-Naba\'');
-  const [tahfidhSuratAkhir, setTahfidhSuratAkhir] = useState('An-Naba\'');
+  const [tahfidhSuratMulai, setTahfidhSuratMulai] = useState('Al-Fatihah');
+  const [tahfidhSuratAkhir, setTahfidhSuratAkhir] = useState('Al-Fatihah');
   const [tahfidhMulai, setTahfidhMulai] = useState('');
   const [tahfidhAkhir, setTahfidhAkhir] = useState('');
   const [tahfidhNilai, setTahfidhNilai] = useState<string | number>('');
@@ -122,8 +122,8 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
     setTahsinNilai('');
 
     setTahfidhJenis('Hafalan Baru (Ziyadah)');
-    setTahfidhSuratMulai('An-Naba\'');
-    setTahfidhSuratAkhir('An-Naba\'');
+    setTahfidhSuratMulai('Al-Fatihah');
+    setTahfidhSuratAkhir('Al-Fatihah');
     setTahfidhMulai('');
     setTahfidhAkhir('');
     setTahfidhNilai('');
