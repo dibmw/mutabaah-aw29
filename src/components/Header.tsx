@@ -43,8 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </h1>
               </div>
               <p className="text-[11px] sm:text-xs text-slate-600 font-semibold leading-snug">
-                <span>AL-WILDAN ISLAMIC SCHOOL 29 DEPOK</span>
-                <span className="block text-amber-700 font-bold">T.A. 2026/2027</span>
+                AL-WILDAN ISLAMIC SCHOOL 29 DEPOK
               </p>
             </div>
           </div>
