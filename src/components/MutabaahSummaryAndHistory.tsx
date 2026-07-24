@@ -1,6 +1,6 @@
 import React from 'react';
 import { MasterSiswa, LogMutabaah, StudentSummary } from '../types';
-import { History, Award, BookOpen, Sparkles, CheckCircle2, FileText, Calendar, User, MessageSquare, AlertCircle, Users } from 'lucide-react';
+import { History, FileText, Calendar, User, MessageSquare, Users } from 'lucide-react';
 
 interface MutabaahSummaryAndHistoryProps {
   selectedSiswaList: MasterSiswa[];

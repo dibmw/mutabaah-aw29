@@ -5,6 +5,9 @@ import { MASTER_SURAT } from '../data/masterSurat';
 const SPREADSHEET_ID = "1wJMBxsQD4u_shFefiDeTpJYqgB8y1InC7De2XpXysCE";
 const DEFAULT_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxgCPxeO62MewnbWBkYt9NYS157YHyT8-4ieS5ZLM9tqNFhHzgWdCFApM-Xiwea7o3a/exec";
 
+const ARCHIVE_RETENTION_DAYS = 30;
+const STORAGE_SIZE_WARN_BYTES = 4 * 1024 * 1024;
+
 const STORAGE_KEYS = {
   USERS: 'mutabaah_master_users_v1',
   SISWA: 'mutabaah_master_siswa_v1',
@@ -343,14 +346,6 @@ export class MutabaahService {
     return localStorage.getItem(STORAGE_KEYS.WEBHOOK_URL) || DEFAULT_WEBHOOK_URL;
   }
 
-  static setWebhookUrl(url: string): void {
-    if (url) {
-      localStorage.setItem(STORAGE_KEYS.WEBHOOK_URL, url.trim());
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.WEBHOOK_URL);
-    }
-  }
-
   // Pending logs queue (webhook retry)
   static getPendingLogs(): LogMutabaah[] {
     try {
@@ -593,7 +588,14 @@ export class MutabaahService {
                 const sheetLogIds = new Set(logsFromSheet.map(l => l.ID_Log));
                 const orphanPending = this.getPendingLogs().filter(l => !sheetLogIds.has(l.ID_Log));
                 const mergedLogs = [...logsFromSheet, ...orphanPending];
-                localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(mergedLogs));
+
+                // Filter out logs older than retention period
+                const cutoffDate = new Date();
+                cutoffDate.setDate(cutoffDate.getDate() - ARCHIVE_RETENTION_DAYS);
+                const cutoffStr = cutoffDate.toISOString().split('T')[0];
+                const filteredLogs = mergedLogs.filter(l => (l.Tanggal_Mutabaah || '') >= cutoffStr);
+
+                localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(filteredLogs));
 
                 // Clean pending queue: remove logs already in sheet
                 this.savePendingLogs(orphanPending);
@@ -620,32 +622,57 @@ export class MutabaahService {
     }
   }
 
-  static exportLogsToCSV(): void {
+  static getStorageSizeBytes(): number {
+    let total = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('mutabaah_')) {
+        const value = localStorage.getItem(key);
+        if (value) {
+          total += (key.length + value.length) * 2;
+        }
+      }
+    }
+    return total;
+  }
+
+  static archiveOldLogs(): LogMutabaah[] {
     const logs = this.getLogs();
-    const headers = [
-      "ID_Log", "Timestamp", "Tanggal_Mutabaah", "Email_Guru", "Nama_Guru",
-      "ID_Siswa", "Nama_Siswa", "Kehadiran", "Tahsin_Rujukan",
-      "Tahsin_Capaian_SuratBab", "Tahsin_Capaian_Detail", "Tahsin_Nilai",
-      "Tahfidh_Jenis", "Tahfidh_Surat", "Tahfidh_Ayat", "Tahfidh_Nilai",
-      "Tajwid_Jenis", "Tajwid_Capaian", "Tajwid_Nilai", "Catatan"
-    ];
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - ARCHIVE_RETENTION_DAYS);
+    const cutoffStr = cutoffDate.toISOString().split('T')[0];
 
-    const rows = logs.map(l => [
-      `"${l.ID_Log}"`, `"${l.Timestamp}"`, `"${l.Tanggal_Mutabaah}"`, `"${l.Email_Guru}"`, `"${l.Nama_Guru}"`,
-      `"${l.ID_Siswa}"`, `"${l.Nama_Siswa}"`, `"${l.Kehadiran}"`, `"${l.Tahsin_Rujukan || ''}"`,
-      `"${l.Tahsin_Capaian_SuratBab || ''}"`, `"${l.Tahsin_Capaian_Detail || ''}"`, `"${l.Tahsin_Nilai !== null && l.Tahsin_Nilai !== undefined ? l.Tahsin_Nilai : ''}"`,
-      `"${l.Tahfidh_Jenis || ''}"`, `"${l.Tahfidh_Surat || ''}"`, `"${l.Tahfidh_Ayat || ''}"`, `"${l.Tahfidh_Nilai !== null && l.Tahfidh_Nilai !== undefined ? l.Tahfidh_Nilai : ''}"`,
-      `"${l.Tajwid_Jenis || ''}"`, `"${l.Tajwid_Capaian || ''}"`, `"${l.Tajwid_Nilai !== null && l.Tajwid_Nilai !== undefined ? l.Tajwid_Nilai : ''}"`,
-      `"${(l.Catatan || '').replace(/"/g, '""')}"`
-    ]);
+    const retained: LogMutabaah[] = [];
+    const archived: LogMutabaah[] = [];
 
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Log_Mutabaah_Export_${new Date().toISOString().slice(0,10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    for (const log of logs) {
+      const logDate = log.Tanggal_Mutabaah || '';
+      if (logDate < cutoffStr) {
+        archived.push(log);
+      } else {
+        retained.push(log);
+      }
+    }
+
+    if (archived.length > 0) {
+      localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(retained));
+    }
+
+    return archived;
+  }
+
+  static autoCleanupIfNeeded(): void {
+    try {
+      const size = this.getStorageSizeBytes();
+      if (size > STORAGE_SIZE_WARN_BYTES) {
+        console.warn(`localStorage size (${(size / 1024 / 1024).toFixed(2)}MB) exceeded threshold. Archiving logs older than ${ARCHIVE_RETENTION_DAYS} days.`);
+        const archived = this.archiveOldLogs();
+        if (archived.length > 0) {
+          console.warn(`Archived ${archived.length} old logs.`);
+        }
+      }
+    } catch (e) {
+      console.warn('autoCleanupIfNeeded failed:', e);
+    }
   }
 }

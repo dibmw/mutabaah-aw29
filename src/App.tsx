@@ -6,10 +6,8 @@ import { LoginModal } from './components/LoginModal';
 import { StudentSearch } from './components/StudentSearch';
 import { MutabaahForm } from './components/MutabaahForm';
 import { MutabaahSummaryAndHistory } from './components/MutabaahSummaryAndHistory';
-import { MasterDataModal } from './components/MasterDataModal';
 import { DailyReportModal } from './components/DailyReportModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
-import { RefreshCw, CheckCircle2, BookOpen } from 'lucide-react';
 
 export default function App() {
   // Current User Session
@@ -35,7 +33,6 @@ export default function App() {
 
   // UI Modals & Notifications
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isMasterModalOpen, setIsMasterModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -71,6 +68,10 @@ export default function App() {
 
     // Keep student selection empty initially until teacher searches/selects students
     setSelectedSiswaList([]);
+
+    // Auto-cleanup old logs and retry pending webhook deliveries
+    MutabaahService.autoCleanupIfNeeded();
+    MutabaahService.retryPendingLogs().catch(() => {});
   }, []);
 
   // Fetch Panel B Data whenever selectedSiswaList changes or when log is added
@@ -198,15 +199,6 @@ export default function App() {
     }
   };
 
-  // Handle Adding New Student from Master Data Modal
-  const handleAddSiswa = (newStudent: MasterSiswa) => {
-    MutabaahService.addSiswa(newStudent);
-    const updated = MutabaahService.getSiswa();
-    setSiswaList(updated);
-    setSelectedSiswaList([newStudent]); // Select the new student right away
-    addToast('success', `Siswa ${newStudent.Nama_Siswa} (NIS: ${newStudent.ID_Siswa}) ditambahkan & dipilih!`);
-  };
-
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans flex flex-col antialiased selection:bg-[#1E3A8A] selection:text-white">
       
@@ -273,16 +265,6 @@ export default function App() {
       <LoginModal
         isOpen={isLoginModalOpen}
         onLoginSuccess={handleLoginSuccess}
-      />
-
-      {/* Master Data Modal */}
-      <MasterDataModal
-        isOpen={isMasterModalOpen}
-        onClose={() => setIsMasterModalOpen(false)}
-        users={usersList}
-        siswaList={siswaList}
-        suratList={suratList}
-        onAddSiswa={handleAddSiswa}
       />
 
       {/* Daily WhatsApp Report Modal */}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MasterSiswa, MasterSurat, MasterUser, AttendanceType, TahsinReference, TahfidhType, TajwidType, MutabaahFormData } from '../types';
-import { Calendar, CheckSquare, BookOpen, Award, Sparkles, MessageSquare, Save, AlertCircle, RefreshCw, Users } from 'lucide-react';
+import { Calendar, BookOpen, Award, Sparkles, MessageSquare, Save, AlertCircle, RefreshCw, Users } from 'lucide-react';
 
 interface MutabaahFormProps {
   selectedSiswaList: MasterSiswa[];

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { MasterSiswa, LogMutabaah, MasterUser } from '../types';
 import { MutabaahService } from '../services/mutabaahService';
-import { X, Copy, Share2, Calendar, Filter, CheckCircle2, FileText, Send, Check, RefreshCw } from 'lucide-react';
+import { X, Copy, Share2, Calendar, Filter, FileText, Send, Check, RefreshCw } from 'lucide-react';
 
 interface DailyReportModalProps {
   isOpen: boolean;
@@ -164,19 +164,15 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
     }
 
     let teacherName = 'Guru Pengampu';
-    let teacherEmail = '';
 
     if (!isKurikulum || selectedTeacher === 'MY_ACCOUNT') {
       teacherName = currentUser ? currentUser.Nama_Guru : 'Guru Pengampu';
-      teacherEmail = currentUser ? currentUser.Email : '';
     } else if (selectedTeacher === 'ALL') {
       teacherName = 'Semua Guru';
-      teacherEmail = '';
     } else {
       const selectedObj = allTeachersList.find(t => t.key === selectedTeacher.toLowerCase());
       if (selectedObj) {
         teacherName = selectedObj.name;
-        teacherEmail = selectedObj.email;
       } else {
         teacherName = 'Guru Pengampu';
       }
