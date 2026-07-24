@@ -53,15 +53,21 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
   const [tahfidhAkhir, setTahfidhAkhir] = useState('');
   const [tahfidhNilai, setTahfidhNilai] = useState<string | number>('');
 
-  // Handlers for Surah Mulai Change (auto-sync Surah Akhir initially)
+  // Handlers for Surah Mulai Change (auto-sync Surah Akhir initially + re-validate ayat)
   const handleTahsinSuratMulaiChange = (surat: string) => {
     setTahsinSuratMulai(surat);
     setTahsinSuratAkhir(surat);
+    const maxAyat = getMaxAyat(surat);
+    setTahsinMulaiError(validateAyat(tahsinMulai, maxAyat));
+    setTahsinAkhirError(validateAyat(tahsinAkhir, maxAyat));
   };
 
   const handleTahfidhSuratMulaiChange = (surat: string) => {
     setTahfidhSuratMulai(surat);
     setTahfidhSuratAkhir(surat);
+    const maxAyat = getMaxAyat(surat);
+    setTahfidhMulaiError(validateAyat(tahfidhMulai, maxAyat));
+    setTahfidhAkhirError(validateAyat(tahfidhAkhir, maxAyat));
   };
 
   // Details for Setoran Tajwid
@@ -73,6 +79,28 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
   const [catatan, setCatatan] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Ayat validation error states
+  const [tahsinMulaiError, setTahsinMulaiError] = useState('');
+  const [tahsinAkhirError, setTahsinAkhirError] = useState('');
+  const [tahfidhMulaiError, setTahfidhMulaiError] = useState('');
+  const [tahfidhAkhirError, setTahfidhAkhirError] = useState('');
+
+  // Helper: get max ayat for a surat name
+  const getMaxAyat = (suratName: string): number | null => {
+    const surat = suratList.find(s => s.Nama_Surat === suratName);
+    return surat ? surat.Jumlah_Ayat : null;
+  };
+
+  // Validate ayat number against max
+  const validateAyat = (value: string, maxAyat: number | null): string => {
+    if (!value || !maxAyat) return '';
+    const num = parseInt(value, 10);
+    if (isNaN(num)) return 'Harus berupa angka';
+    if (num < 1) return 'Minimal angka 1';
+    if (num > maxAyat) return `Maksimal ${maxAyat} ayat`;
+    return '';
+  };
 
   // Derived Boolean Flags based on Single Choice
   const hasTahsin = setoranChoice === 'tahsin';
@@ -105,6 +133,10 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
     setTajwidNilai('');
 
     setCatatan('');
+    setTahsinMulaiError('');
+    setTahsinAkhirError('');
+    setTahfidhMulaiError('');
+    setTahfidhAkhirError('');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -162,6 +194,33 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
       const val = Number(tajwidNilai);
       if (isNaN(val) || val < 0 || val > 100) {
         onError("Nilai Tajwid harus berupa angka 0 - 100.");
+        return;
+      }
+    }
+
+    // Validation 6: Ayat numbers must not exceed max ayat for selected surat
+    if (hasTahsin && tahsinRujukan === "Al-Qur'an") {
+      const mulaiErr = validateAyat(tahsinMulai, getMaxAyat(tahsinSuratMulai));
+      const akhirErr = validateAyat(tahsinAkhir, getMaxAyat(tahsinSuratAkhir));
+      if (mulaiErr) {
+        onError(`Ayat Mulai Tahsin: ${mulaiErr}`);
+        return;
+      }
+      if (akhirErr) {
+        onError(`Ayat Akhir Tahsin: ${akhirErr}`);
+        return;
+      }
+    }
+
+    if (hasTahfidh) {
+      const mulaiErr = validateAyat(tahfidhMulai, getMaxAyat(tahfidhSuratMulai));
+      const akhirErr = validateAyat(tahfidhAkhir, getMaxAyat(tahfidhSuratAkhir));
+      if (mulaiErr) {
+        onError(`Ayat Mulai Tahfidh: ${mulaiErr}`);
+        return;
+      }
+      if (akhirErr) {
+        onError(`Ayat Akhir Tahfidh: ${akhirErr}`);
         return;
       }
     }
@@ -506,12 +565,20 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                         Ayat Mulai
                       </label>
                       <input
-                        type="text"
+                        type="number"
+                        min="1"
+                        max={getMaxAyat(tahsinSuratMulai) || undefined}
                         value={tahsinMulai}
-                        onChange={(e) => setTahsinMulai(e.target.value)}
-                        placeholder="contoh: Ayat 1 atau Hal 12"
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-[#1E3A8A]"
+                        onChange={(e) => {
+                          setTahsinMulai(e.target.value);
+                          setTahsinMulaiError(validateAyat(e.target.value, getMaxAyat(tahsinSuratMulai)));
+                        }}
+                        placeholder={`1 - ${getMaxAyat(tahsinSuratMulai) || '?'}`}
+                        className={`w-full px-3 py-2 bg-white border rounded-lg text-xs font-medium focus:ring-2 focus:ring-[#1E3A8A] ${tahsinMulaiError ? 'border-red-400' : 'border-slate-300'}`}
                       />
+                      {tahsinMulaiError && (
+                        <p className="text-[10px] text-red-500 mt-1 font-medium">{tahsinMulaiError}</p>
+                      )}
                     </div>
                   </div>
 
@@ -526,7 +593,10 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                       </label>
                       <select
                         value={tahsinSuratAkhir}
-                        onChange={(e) => setTahsinSuratAkhir(e.target.value)}
+                        onChange={(e) => {
+                          setTahsinSuratAkhir(e.target.value);
+                          setTahsinAkhirError(validateAyat(tahsinAkhir, getMaxAyat(e.target.value)));
+                        }}
                         className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-900 focus:ring-2 focus:ring-[#1E3A8A]"
                       >
                         {suratList.map((s) => (
@@ -541,12 +611,20 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                         Ayat Akhir
                       </label>
                       <input
-                        type="text"
+                        type="number"
+                        min="1"
+                        max={getMaxAyat(tahsinSuratAkhir) || undefined}
                         value={tahsinAkhir}
-                        onChange={(e) => setTahsinAkhir(e.target.value)}
-                        placeholder="contoh: Ayat 15 atau Hal 15"
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-[#1E3A8A]"
+                        onChange={(e) => {
+                          setTahsinAkhir(e.target.value);
+                          setTahsinAkhirError(validateAyat(e.target.value, getMaxAyat(tahsinSuratAkhir)));
+                        }}
+                        placeholder={`1 - ${getMaxAyat(tahsinSuratAkhir) || '?'}`}
+                        className={`w-full px-3 py-2 bg-white border rounded-lg text-xs font-medium focus:ring-2 focus:ring-[#1E3A8A] ${tahsinAkhirError ? 'border-red-400' : 'border-slate-300'}`}
                       />
+                      {tahsinAkhirError && (
+                        <p className="text-[10px] text-red-500 mt-1 font-medium">{tahsinAkhirError}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -635,12 +713,20 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                       Ayat Mulai
                     </label>
                     <input
-                      type="text"
+                      type="number"
+                      min="1"
+                      max={getMaxAyat(tahfidhSuratMulai) || undefined}
                       value={tahfidhMulai}
-                      onChange={(e) => setTahfidhMulai(e.target.value)}
-                      placeholder="contoh: Ayat 1"
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-[#D97706]"
+                      onChange={(e) => {
+                        setTahfidhMulai(e.target.value);
+                        setTahfidhMulaiError(validateAyat(e.target.value, getMaxAyat(tahfidhSuratMulai)));
+                      }}
+                      placeholder={`1 - ${getMaxAyat(tahfidhSuratMulai) || '?'}`}
+                      className={`w-full px-3 py-2 bg-white border rounded-lg text-xs font-medium focus:ring-2 focus:ring-[#D97706] ${tahfidhMulaiError ? 'border-red-400' : 'border-slate-300'}`}
                     />
+                    {tahfidhMulaiError && (
+                      <p className="text-[10px] text-red-500 mt-1 font-medium">{tahfidhMulaiError}</p>
+                    )}
                   </div>
                 </div>
 
@@ -655,7 +741,10 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                     </label>
                     <select
                       value={tahfidhSuratAkhir}
-                      onChange={(e) => setTahfidhSuratAkhir(e.target.value)}
+                      onChange={(e) => {
+                        setTahfidhSuratAkhir(e.target.value);
+                        setTahfidhAkhirError(validateAyat(tahfidhAkhir, getMaxAyat(e.target.value)));
+                      }}
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-900 focus:ring-2 focus:ring-[#D97706]"
                     >
                       {suratList.map((s) => (
@@ -670,12 +759,20 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                       Ayat Akhir
                     </label>
                     <input
-                      type="text"
+                      type="number"
+                      min="1"
+                      max={getMaxAyat(tahfidhSuratAkhir) || undefined}
                       value={tahfidhAkhir}
-                      onChange={(e) => setTahfidhAkhir(e.target.value)}
-                      placeholder="contoh: Ayat 20"
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-[#D97706]"
+                      onChange={(e) => {
+                        setTahfidhAkhir(e.target.value);
+                        setTahfidhAkhirError(validateAyat(e.target.value, getMaxAyat(tahfidhSuratAkhir)));
+                      }}
+                      placeholder={`1 - ${getMaxAyat(tahfidhSuratAkhir) || '?'}`}
+                      className={`w-full px-3 py-2 bg-white border rounded-lg text-xs font-medium focus:ring-2 focus:ring-[#D97706] ${tahfidhAkhirError ? 'border-red-400' : 'border-slate-300'}`}
                     />
+                    {tahfidhAkhirError && (
+                      <p className="text-[10px] text-red-500 mt-1 font-medium">{tahfidhAkhirError}</p>
+                    )}
                   </div>
                 </div>
               </div>
