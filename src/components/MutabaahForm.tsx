@@ -569,7 +569,7 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                         min="1"
                         max={getMaxAyat(tahsinSuratMulai) || undefined}
                         value={tahsinMulai}
-                        onWheel={(e) => e.preventDefault()}
+                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
                         onChange={(e) => {
                           setTahsinMulai(e.target.value);
                           setTahsinMulaiError(validateAyat(e.target.value, getMaxAyat(tahsinSuratMulai)));
@@ -616,7 +616,7 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                         min="1"
                         max={getMaxAyat(tahsinSuratAkhir) || undefined}
                         value={tahsinAkhir}
-                        onWheel={(e) => e.preventDefault()}
+                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
                         onChange={(e) => {
                           setTahsinAkhir(e.target.value);
                           setTahsinAkhirError(validateAyat(e.target.value, getMaxAyat(tahsinSuratAkhir)));
@@ -654,7 +654,7 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                   min="0"
                   max="100"
                   value={tahsinNilai}
-                  onWheel={(e) => e.preventDefault()}
+                  onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   onChange={(e) => setTahsinNilai(e.target.value)}
                   placeholder="Nilai (0-100)"
                   className="w-full sm:w-1/2 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-[#1E3A8A]"
@@ -720,7 +720,7 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                       min="1"
                       max={getMaxAyat(tahfidhSuratMulai) || undefined}
                       value={tahfidhMulai}
-                      onWheel={(e) => e.preventDefault()}
+                      onWheel={(e) => (e.target as HTMLInputElement).blur()}
                       onChange={(e) => {
                         setTahfidhMulai(e.target.value);
                         setTahfidhMulaiError(validateAyat(e.target.value, getMaxAyat(tahfidhSuratMulai)));
@@ -767,7 +767,7 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                       min="1"
                       max={getMaxAyat(tahfidhSuratAkhir) || undefined}
                       value={tahfidhAkhir}
-                      onWheel={(e) => e.preventDefault()}
+                      onWheel={(e) => (e.target as HTMLInputElement).blur()}
                       onChange={(e) => {
                         setTahfidhAkhir(e.target.value);
                         setTahfidhAkhirError(validateAyat(e.target.value, getMaxAyat(tahfidhSuratAkhir)));
@@ -791,7 +791,7 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                   min="0"
                   max="100"
                   value={tahfidhNilai}
-                  onWheel={(e) => e.preventDefault()}
+                  onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   onChange={(e) => setTahfidhNilai(e.target.value)}
                   placeholder="Nilai (0-100)"
                   className="w-full sm:w-1/2 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-[#D97706]"
@@ -848,7 +848,7 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                   min="0"
                   max="100"
                   value={tajwidNilai}
-                  onWheel={(e) => e.preventDefault()}
+                  onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   onChange={(e) => setTajwidNilai(e.target.value)}
                   placeholder="Nilai (0-100)"
                   className="w-full sm:w-1/2 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-purple-600"
