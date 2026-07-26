@@ -19,8 +19,15 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Extract unique classes for filter sorted naturally by grade level
-  const classes = Array.from(new Set(siswaList.map(s => s.Kelas).filter(Boolean)))
+  // Extract unique classes for filter, respecting gender filter
+  const classes = Array.from(
+    new Set(
+      siswaList
+        .filter(s => genderFilter === 'ALL' || s.Gender === genderFilter)
+        .map(s => s.Kelas)
+        .filter(Boolean)
+    )
+  )
     .map(c => String(c))
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
@@ -28,6 +35,13 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
   const genders = Array.from(new Set(siswaList.map(s => s.Gender).filter(Boolean)))
     .map(g => String(g))
     .sort();
+
+  // Auto-reset classFilter if selected class no longer exists under current gender filter
+  useEffect(() => {
+    if (genderFilter !== 'ALL' && classFilter !== 'ALL' && !classes.includes(classFilter)) {
+      setClassFilter('ALL');
+    }
+  }, [genderFilter, classes, classFilter]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
