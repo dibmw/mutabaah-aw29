@@ -20,7 +20,7 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
 }) => {
   const todayStr = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState(todayStr);
-  const [selectedClass, setSelectedClass] = useState<string>('Semua Kelas');
+  const [selectedClass, setSelectedClass] = useState<string>('');
   const [selectedTeacher, setSelectedTeacher] = useState<string>('MY_ACCOUNT');
   const [isCopied, setIsCopied] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -61,8 +61,15 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
   const uniqueClasses = useMemo(() => {
     const classes = Array.from(new Set(siswaList.map(s => s.Kelas).filter(Boolean))).map(c => String(c));
     classes.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-    return ['Semua Kelas', ...classes];
+    return classes;
   }, [siswaList]);
+
+  // Set default selectedClass to the first available class
+  useEffect(() => {
+    if (uniqueClasses.length > 0 && (!selectedClass || !uniqueClasses.includes(selectedClass))) {
+      setSelectedClass(uniqueClasses[0]);
+    }
+  }, [uniqueClasses, selectedClass]);
 
   // Retrieve logs from MutabaahService / local state
   const allLogs: LogMutabaah[] = useMemo(() => {
@@ -132,8 +139,6 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
       }
 
       // 3. Class match
-      if (selectedClass === 'Semua Kelas') return true;
-
       const studentObj = siswaList.find(s => s.ID_Siswa === log.ID_Siswa);
       const studentClass = studentObj?.Kelas || '';
       return studentClass === selectedClass;
@@ -212,10 +217,8 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
     if (groupedStudents.length === 0) {
       text += `_(Belum ada data mutabaah yang diinput pada tanggal dan kelas ini)_\n`;
     } else {
-      const isSemuaKelas = selectedClass === 'Semua Kelas';
       groupedStudents.forEach((st, index) => {
-        const classInfoStr = isSemuaKelas ? `, Kelas: ${st.kelas}` : '';
-        text += `${index + 1}. *${st.namaSiswa}* (NIS: ${st.idSiswa}${classInfoStr})\n`;
+        text += `${index + 1}. *${st.namaSiswa}* (NIS: ${st.idSiswa})\n`;
 
         const formatSetoranDetail = (log: LogMutabaah): string[] => {
           const lines: string[] = [];
