@@ -67,9 +67,34 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
     return logsState.length > 0 ? logsState : MutabaahService.getLogs();
   }, [isOpen, logsState, selectedDate]);
 
-  // Extract unique classes from logs on the selected date (only classes with actual input)
+  // Extract unique classes from logs on the selected date, filtered by teacher
   const uniqueClasses = useMemo(() => {
-    const dateLogs = allLogs.filter(l => l.Tanggal_Mutabaah === selectedDate);
+    const dateLogs = allLogs.filter(l => {
+      if (l.Tanggal_Mutabaah !== selectedDate) return false;
+
+      // Teacher filter (same logic as filteredLogs)
+      if (!isKurikulum || selectedTeacher === 'MY_ACCOUNT') {
+        if (currentUser) {
+          const userEmail = currentUser.Email?.trim().toLowerCase();
+          const userName = currentUser.Nama_Guru?.trim().toLowerCase();
+          const logEmail = l.Email_Guru?.trim().toLowerCase();
+          const logName = l.Nama_Guru?.trim().toLowerCase();
+          const matchByEmail = Boolean(userEmail && logEmail && logEmail === userEmail);
+          const matchByName = Boolean(userName && logName && logName === userName);
+          if (!matchByEmail && !matchByName) return false;
+        }
+      } else if (selectedTeacher !== 'ALL') {
+        const teacherKey = selectedTeacher.trim().toLowerCase();
+        const logEmail = l.Email_Guru?.trim().toLowerCase() || '';
+        const logName = l.Nama_Guru?.trim().toLowerCase() || '';
+        const matchByEmail = Boolean(logEmail && logEmail === teacherKey);
+        const matchByName = Boolean(logName && logName === teacherKey);
+        if (!matchByEmail && !matchByName) return false;
+      }
+
+      return true;
+    });
+
     const classes = Array.from(new Set(
       dateLogs.map(l => {
         const student = siswaList.find(s => s.ID_Siswa === l.ID_Siswa);
@@ -78,7 +103,7 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
     )).map(c => String(c));
     classes.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
     return classes;
-  }, [allLogs, selectedDate, siswaList]);
+  }, [allLogs, selectedDate, siswaList, selectedTeacher, currentUser, isKurikulum]);
 
   // Set default selectedClass to the first available class with input
   useEffect(() => {
