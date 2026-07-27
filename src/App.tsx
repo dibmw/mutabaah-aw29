@@ -69,7 +69,8 @@ export default function App() {
     // Keep student selection empty initially until teacher searches/selects students
     setSelectedSiswaList([]);
 
-    // Auto-cleanup old logs and retry pending webhook deliveries
+    // Migrate existing UTC timestamps to WIB, then auto-cleanup and retry pending
+    MutabaahService.migrateTimestampsToWIB();
     MutabaahService.autoCleanupIfNeeded();
     MutabaahService.retryPendingLogs().catch(() => {});
   }, []);

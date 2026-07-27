@@ -202,7 +202,8 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
       studentGroupMap.get(key)!.logs.push(log);
     });
 
-    const groupedStudents = Array.from(studentGroupMap.values());
+    const groupedStudents = Array.from(studentGroupMap.values())
+      .sort((a, b) => a.namaSiswa.localeCompare(b.namaSiswa, 'id'));
 
     let text = `📋 *LAPORAN HARIAN MUTABAAH AL-QUR'AN*\n`;
     text += `🏫 *AL-WILDAN ISLAMIC SCHOOL 29 DEPOK*\n`;
@@ -261,10 +262,6 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
           } else {
             text += `   • Setoran: Tidak ada setoran\n`;
           }
-
-          if (log.Catatan?.trim()) {
-            text += `   • Catatan: ${log.Catatan.trim()}\n`;
-          }
         } else {
           text += `   ───────────────────────────\n`;
           st.logs.forEach((log, logIdx) => {
@@ -279,9 +276,6 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
               text += `   • Setoran: Tidak ada setoran\n`;
             }
 
-            if (log.Catatan?.trim()) {
-              text += `   • Catatan: ${log.Catatan.trim()}\n`;
-            }
             if (logIdx < st.logs.length - 1) {
               text += `\n`;
             }

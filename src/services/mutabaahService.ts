@@ -40,6 +40,47 @@ function parseCSVRow(row: string): string[] {
 }
 
 export class MutabaahService {
+  // WIB (Waktu Indonesia Barat, UTC+7) helpers
+  private static pad(n: number): string {
+    return String(n).padStart(2, '0');
+  }
+
+  static getWIBTimestampFromDate(d: Date): string {
+    return `${d.getFullYear()}-${this.pad(d.getMonth() + 1)}-${this.pad(d.getDate())} ${this.pad(d.getHours())}:${this.pad(d.getMinutes())}:${this.pad(d.getSeconds())}`;
+  }
+
+  static getWIBTimestamp(): string {
+    return this.getWIBTimestampFromDate(new Date());
+  }
+
+  static getWIBDateStr(): string {
+    const now = new Date();
+    return `${now.getFullYear()}-${this.pad(now.getMonth() + 1)}-${this.pad(now.getDate())}`;
+  }
+
+  // Migrate existing localStorage timestamps from UTC to WIB (+7 hours)
+  static migrateTimestampsToWIB(): void {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.LOGS);
+      if (!raw) return;
+      const logs: LogMutabaah[] = JSON.parse(raw);
+      let changed = false;
+      const migrated = logs.map(log => {
+        if (log.Timestamp && (log.Timestamp.includes('T') || log.Timestamp.endsWith('Z'))) {
+          const d = new Date(log.Timestamp);
+          if (!isNaN(d.getTime())) {
+            changed = true;
+            return { ...log, Timestamp: this.getWIBTimestampFromDate(d) };
+          }
+        }
+        return log;
+      });
+      if (changed) {
+        localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(migrated));
+      }
+    } catch { /* ignore */ }
+  }
+
   // Get all Master Users from local storage
   static getUsers(): MasterUser[] {
     const stored = localStorage.getItem(STORAGE_KEYS.USERS);
@@ -215,8 +256,7 @@ export class MutabaahService {
     const student = allSiswa.find(s => s.ID_Siswa === formData.ID_Siswa);
     const studentName = student ? student.Nama_Siswa : formData.ID_Siswa;
 
-    const now = new Date();
-    const timestampStr = now.toISOString().replace('T', ' ').substring(0, 19);
+    const timestampStr = this.getWIBTimestamp();
     const logId = "LOG-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
 
     let tahsinDetail = '';
@@ -277,8 +317,7 @@ export class MutabaahService {
     const allSiswa = this.getSiswa();
     const currentLogs = this.getLogs();
     const newLogs: LogMutabaah[] = [];
-    const now = new Date();
-    const baseTimestamp = now.toISOString().replace('T', ' ').substring(0, 19);
+    const baseTimestamp = this.getWIBTimestamp();
 
     formDataList.forEach((formData, idx) => {
       const student = allSiswa.find(s => s.ID_Siswa === formData.ID_Siswa);
@@ -562,8 +601,8 @@ export class MutabaahService {
                   if (cols.length >= 1 && (cols[0] || cols[2] || cols[5] || cols[6])) {
                     logsFromSheet.push({
                       ID_Log: cols[0] ? cols[0].trim() : `LOG-SHEET-${i}`,
-                      Timestamp: cols[1] ? cols[1].trim() : new Date().toISOString(),
-                      Tanggal_Mutabaah: cols[2] ? cols[2].trim() : new Date().toISOString().split('T')[0],
+                      Timestamp: cols[1] ? cols[1].trim() : this.getWIBTimestamp(),
+                      Tanggal_Mutabaah: cols[2] ? cols[2].trim() : this.getWIBDateStr(),
                       Email_Guru: cols[3] ? cols[3].trim() : '',
                       Nama_Guru: cols[4] ? cols[4].trim() : '',
                       ID_Siswa: cols[5] ? cols[5].trim() : '',
@@ -592,7 +631,7 @@ export class MutabaahService {
                 // Filter out logs older than retention period
                 const cutoffDate = new Date();
                 cutoffDate.setDate(cutoffDate.getDate() - ARCHIVE_RETENTION_DAYS);
-                const cutoffStr = cutoffDate.toISOString().split('T')[0];
+                const cutoffStr = `${cutoffDate.getFullYear()}-${this.pad(cutoffDate.getMonth() + 1)}-${this.pad(cutoffDate.getDate())}`;
                 const filteredLogs = mergedLogs.filter(l => (l.Tanggal_Mutabaah || '') >= cutoffStr);
 
                 localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(filteredLogs));
