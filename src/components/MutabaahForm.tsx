@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MasterSiswa, MasterSurat, MasterUser, AttendanceType, TahsinReference, TahfidhType, TajwidType, MutabaahFormData } from '../types';
+import { MasterSiswa, MasterSurat, MasterUser, LogMutabaah, AttendanceType, TahsinReference, TahfidhType, TajwidType, MutabaahFormData } from '../types';
 import { Calendar, BookOpen, Award, Sparkles, MessageSquare, Save, AlertCircle, RefreshCw, Users } from 'lucide-react';
 
 interface MutabaahFormProps {
@@ -8,6 +8,8 @@ interface MutabaahFormProps {
   currentUser: MasterUser | null;
   onSubmitSuccess: (formDataJson: string, targetList: MasterSiswa[]) => void;
   onError: (msg: string) => void;
+  editingLog?: LogMutabaah | null;
+  onCancelEdit?: () => void;
 }
 
 export const MutabaahForm: React.FC<MutabaahFormProps> = ({
@@ -15,7 +17,9 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
   suratList,
   currentUser,
   onSubmitSuccess,
-  onError
+  onError,
+  editingLog,
+  onCancelEdit
 }) => {
   // Form State
   const todayStr = (() => {
@@ -39,6 +43,41 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
       setSetoranChoice('tahsin');
     }
   }, [isMultiSelect, setoranChoice]);
+
+  // Pre-fill form when editingLog is set
+  useEffect(() => {
+    if (!editingLog) return;
+    setTanggal(editingLog.Tanggal_Mutabaah || todayStr);
+    setKehadiran(editingLog.Kehadiran || 'A');
+    setCatatan(editingLog.Catatan || '');
+
+    // Determine setoran choice
+    if (editingLog.Tahsin_Rujukan || editingLog.Tahsin_Capaian_SuratBab) {
+      setSetoranChoice('tahsin');
+      setTahsinRujukan((editingLog.Tahsin_Rujukan as TahsinReference) || 'Al-Qur\'an');
+      setTahsinSuratMulai(editingLog.Tahsin_Capaian_SuratBab || 'Al-Fatihah');
+      setTahsinSuratAkhir(editingLog.Tahsin_Capaian_SuratBab || 'Al-Fatihah');
+      setTahsinMulai(editingLog.Tahsin_Mulai || '');
+      setTahsinAkhir(editingLog.Tahsin_Akhir || '');
+      setTahsinBabHalaman(editingLog.Tahsin_Capaian_SuratBab || '');
+      setTahsinNilai(editingLog.Tahsin_Nilai ?? '');
+    } else if (editingLog.Tahfidh_Jenis || editingLog.Tahfidh_Surat) {
+      setSetoranChoice('tahfidh');
+      setTahfidhJenis((editingLog.Tahfidh_Jenis as TahfidhType) || 'Hafalan Baru (Ziyadah)');
+      setTahfidhSuratMulai(editingLog.Tahfidh_Surat || 'Al-Fatihah');
+      setTahfidhSuratAkhir(editingLog.Tahfidh_Surat || 'Al-Fatihah');
+      setTahfidhMulai(editingLog.Tahfidh_Mulai || '');
+      setTahfidhAkhir(editingLog.Tahfidh_Akhir || '');
+      setTahfidhNilai(editingLog.Tahfidh_Nilai ?? '');
+    } else if (editingLog.Tajwid_Jenis || editingLog.Tajwid_Capaian) {
+      setSetoranChoice('tajwid');
+      setTajwidJenis((editingLog.Tajwid_Jenis as TajwidType) || 'Tajwid Metode Asy-Syafi\'i');
+      setTajwidCapaian(editingLog.Tajwid_Capaian || '');
+      setTajwidNilai(editingLog.Tajwid_Nilai ?? '');
+    } else {
+      setSetoranChoice('none');
+    }
+  }, [editingLog, todayStr]);
 
   // Details for Setoran Tahsin
   const [tahsinRujukan, setTahsinRujukan] = useState<TahsinReference>('Al-Qur\'an');
@@ -897,7 +936,16 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
 
 
           {/* Submit Button */}
-          <div className="pt-2">
+          <div className="pt-2 space-y-2">
+            {editingLog && (
+              <button
+                type="button"
+                onClick={onCancelEdit}
+                className="w-full py-2.5 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl border border-slate-300 transition-all active:scale-95"
+              >
+                Batal Edit
+              </button>
+            )}
             <button
               type="submit"
               disabled={isSubmitting}
@@ -906,12 +954,14 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
               {isSubmitting ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin text-[#F59E0B]" />
-                  Menyimpan Data Mutabaah...
+                  {editingLog ? 'Memperbarui Data...' : 'Menyimpan Data Mutabaah...'}
                 </>
               ) : (
                 <>
                   <Save className="w-4 h-4 text-[#F59E0B]" />
-                  {selectedSiswaList.length > 1
+                  {editingLog
+                    ? 'Update Mutabaah'
+                    : selectedSiswaList.length > 1
                     ? 'Simpan Mutabaah Massal'
                     : selectedSiswaList.length === 1
                     ? 'Simpan Mutabaah'

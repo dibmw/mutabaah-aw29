@@ -1,4 +1,4 @@
-import { MasterUser, MasterSiswa, MasterSurat, LogMutabaah, MutabaahFormData, StudentSummary } from '../types';
+import { MasterUser, MasterSiswa, MasterSurat, LogMutabaah, MutabaahFormData, StudentSummary, PendingAction } from '../types';
 import { INITIAL_USERS, INITIAL_SISWA, INITIAL_LOGS } from '../data/initialData';
 import { MASTER_SURAT } from '../data/masterSurat';
 
@@ -222,7 +222,28 @@ export class MutabaahService {
     }
   }
 
-  static getStudentRecentLogs(nis: string, limit = 10): LogMutabaah[] {
+  static updateLog(id: string, updates: Partial<LogMutabaah>): LogMutabaah | null {
+    const logs = this.getLogs();
+    const idx = logs.findIndex(l => l.ID_Log === id);
+    if (idx === -1) return null;
+    logs[idx] = { ...logs[idx], ...updates };
+    localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(logs));
+    // Send update webhook
+    this.sendUpdateToWebhook(logs[idx]);
+    return logs[idx];
+  }
+
+  static deleteLog(id: string): boolean {
+    const logs = this.getLogs();
+    const filtered = logs.filter(l => l.ID_Log !== id);
+    if (filtered.length === logs.length) return false;
+    localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(filtered));
+    // Send delete webhook
+    this.sendDeleteToWebhook(id);
+    return true;
+  }
+
+  static getStudentRecentLogs(nis: string, limit = 20): LogMutabaah[] {
     const logs = this.getLogs();
     const filtered = logs.filter(l => String(l.ID_Siswa).trim() === String(nis).trim());
     filtered.sort((a, b) => new Date(b.Timestamp).getTime() - new Date(a.Timestamp).getTime());
@@ -385,37 +406,63 @@ export class MutabaahService {
     return localStorage.getItem(STORAGE_KEYS.WEBHOOK_URL) || DEFAULT_WEBHOOK_URL;
   }
 
-  // Pending logs queue (webhook retry)
-  static getPendingLogs(): LogMutabaah[] {
+  // Pending action queue (webhook retry for create/update/delete)
+  static getPendingActions(): PendingAction[] {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.PENDING_LOGS);
-      return stored ? JSON.parse(stored) : [];
+      if (!stored) return [];
+      const parsed = JSON.parse(stored);
+      // Migration: if old format (LogMutabaah[]), convert to PendingAction[]
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].ID_Log && !parsed[0].action) {
+        const migrated: PendingAction[] = parsed.map((log: LogMutabaah) => ({
+          action: 'create' as const,
+          log,
+          timestamp: log.Timestamp
+        }));
+        this.savePendingActions(migrated);
+        return migrated;
+      }
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
   }
 
-  static getPendingLogsCount(): number {
-    return this.getPendingLogs().length;
+  /** @deprecated Use getPendingActions() */
+  static getPendingLogs(): LogMutabaah[] {
+    return this.getPendingActions().map(a => a.log);
   }
 
-  private static savePendingLogs(logs: LogMutabaah[]): void {
-    if (logs.length > 0) {
-      localStorage.setItem(STORAGE_KEYS.PENDING_LOGS, JSON.stringify(logs));
+  static getPendingLogsCount(): number {
+    return this.getPendingActions().length;
+  }
+
+  private static savePendingActions(actions: PendingAction[]): void {
+    if (actions.length > 0) {
+      localStorage.setItem(STORAGE_KEYS.PENDING_LOGS, JSON.stringify(actions));
     } else {
       localStorage.removeItem(STORAGE_KEYS.PENDING_LOGS);
     }
   }
 
+  private static addToPendingActions(actions: PendingAction[]): void {
+    const existing = this.getPendingActions();
+    const existingIds = new Set(existing.map(a => a.log.ID_Log));
+    const newUnique = actions.filter(a => !existingIds.has(a.log.ID_Log));
+    this.savePendingActions([...existing, ...newUnique]);
+  }
+
+  /** @deprecated Use addToPendingActions() */
   private static addToPendingLogs(logs: LogMutabaah[]): void {
-    const existing = this.getPendingLogs();
-    const existingIds = new Set(existing.map(l => l.ID_Log));
-    const newUnique = logs.filter(l => !existingIds.has(l.ID_Log));
-    this.savePendingLogs([...existing, ...newUnique]);
+    this.addToPendingActions(logs.map(log => ({
+      action: 'create' as const,
+      log,
+      timestamp: log.Timestamp
+    })));
   }
 
   static async retryPendingLogs(): Promise<{ success: number; failed: number }> {
-    const pending = this.getPendingLogs();
+    const pending = this.getPendingActions();
     if (pending.length === 0) return { success: 0, failed: 0 };
 
     const url = this.getWebhookUrl();
@@ -423,20 +470,36 @@ export class MutabaahService {
 
     let success = 0;
     let failed = 0;
-    const stillPending: LogMutabaah[] = [];
+    const stillPending: PendingAction[] = [];
     const CHUNK_SIZE = 3;
 
     for (let i = 0; i < pending.length; i += CHUNK_SIZE) {
       const chunk = pending.slice(i, i + CHUNK_SIZE);
       const results = await Promise.allSettled(
-        chunk.map(log =>
-          fetch(url, {
+        chunk.map(action => {
+          if (action.action === 'delete') {
+            return fetch(url, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({ _action: 'delete', ID_Log: action.log.ID_Log })
+            });
+          }
+          if (action.action === 'update') {
+            return fetch(url, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({ _action: 'update', ...action.log })
+            });
+          }
+          return fetch(url, {
             method: 'POST',
             mode: 'no-cors',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(log)
-          })
-        )
+            body: JSON.stringify(action.log)
+          });
+        })
       );
 
       results.forEach((result, idx) => {
@@ -453,7 +516,7 @@ export class MutabaahService {
       }
     }
 
-    this.savePendingLogs(stillPending);
+    this.savePendingActions(stillPending);
     return { success, failed };
   }
 
@@ -469,7 +532,40 @@ export class MutabaahService {
       });
     } catch (e) {
       console.warn('Webhook post failed, adding to pending queue:', log.ID_Log, e);
-      this.addToPendingLogs([log]);
+      this.addToPendingActions([{ action: 'create', log, timestamp: log.Timestamp }]);
+    }
+  }
+
+  private static async sendUpdateToWebhook(log: LogMutabaah): Promise<void> {
+    const url = this.getWebhookUrl();
+    if (!url) return;
+    try {
+      await fetch(url, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ _action: 'update', ...log })
+      });
+    } catch (e) {
+      console.warn('Update webhook failed, adding to pending queue:', log.ID_Log, e);
+      this.addToPendingActions([{ action: 'update', log, timestamp: log.Timestamp }]);
+    }
+  }
+
+  private static async sendDeleteToWebhook(logId: string): Promise<void> {
+    const url = this.getWebhookUrl();
+    if (!url) return;
+    try {
+      await fetch(url, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ _action: 'delete', ID_Log: logId })
+      });
+    } catch (e) {
+      console.warn('Delete webhook failed, adding to pending queue:', logId, e);
+      // For delete, we need to store the ID_Log to retry later
+      this.addToPendingActions([{ action: 'delete', log: { ID_Log: logId } as LogMutabaah, timestamp: this.getWIBTimestamp() }]);
     }
   }
 
@@ -478,7 +574,7 @@ export class MutabaahService {
     if (!url || logs.length === 0) return;
 
     const CHUNK_SIZE = 3;
-    const failedLogs: LogMutabaah[] = [];
+    const failedActions: PendingAction[] = [];
 
     for (let i = 0; i < logs.length; i += CHUNK_SIZE) {
       const chunk = logs.slice(i, i + CHUNK_SIZE);
@@ -496,7 +592,7 @@ export class MutabaahService {
       results.forEach((result, idx) => {
         if (result.status === 'rejected') {
           console.warn(`Log ${chunk[idx].ID_Log} post failed:`, result.reason);
-          failedLogs.push(chunk[idx]);
+          failedActions.push({ action: 'create', log: chunk[idx], timestamp: chunk[idx].Timestamp });
         }
       });
 
@@ -505,8 +601,8 @@ export class MutabaahService {
       }
     }
 
-    if (failedLogs.length > 0) {
-      this.addToPendingLogs(failedLogs);
+    if (failedActions.length > 0) {
+      this.addToPendingActions(failedActions);
     }
   }
 
@@ -636,8 +732,13 @@ export class MutabaahService {
 
                 localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(filteredLogs));
 
-                // Clean pending queue: remove logs already in sheet
-                this.savePendingLogs(orphanPending);
+                // Clean pending queue: keep only orphan pending (not in sheet)
+                const orphanActions: PendingAction[] = orphanPending.map(l => ({
+                  action: 'create' as const,
+                  log: l,
+                  timestamp: l.Timestamp
+                }));
+                this.savePendingActions(orphanActions);
               }
             }
           }

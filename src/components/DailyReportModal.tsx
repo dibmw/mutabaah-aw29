@@ -18,7 +18,11 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
   siswaList,
   onToast
 }) => {
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = (() => {
+    const n = new Date();
+    const p = (v: number) => String(v).padStart(2, '0');
+    return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`;
+  })();
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [selectedTeacher, setSelectedTeacher] = useState<string>('MY_ACCOUNT');
@@ -229,32 +233,24 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
             if (log.Tahsin_Capaian_Detail) {
               lines.push(`     - Detail: ${log.Tahsin_Capaian_Detail}`);
             }
-            if (log.Tahsin_Nilai !== null && log.Tahsin_Nilai !== undefined) {
-              lines.push(`     - Nilai: ${log.Tahsin_Nilai}`);
-            }
           } else if (log.Tahfidh_Jenis || log.Tahfidh_Surat) {
             lines.push(`   • Tahfidh [${log.Tahfidh_Jenis || 'Hafalan'}]:`);
             lines.push(`     - Surat: ${log.Tahfidh_Surat || '-'}`);
             if (log.Tahfidh_Ayat) {
               lines.push(`     - Ayat: ${log.Tahfidh_Ayat}`);
             }
-            if (log.Tahfidh_Nilai !== null && log.Tahfidh_Nilai !== undefined) {
-              lines.push(`     - Nilai: ${log.Tahfidh_Nilai}`);
-            }
           } else if (log.Tajwid_Jenis || log.Tajwid_Capaian) {
             lines.push(`   • Tajwid [${log.Tajwid_Jenis || 'Metode'}]:`);
             lines.push(`     - Capaian: ${log.Tajwid_Capaian || '-'}`);
-            if (log.Tajwid_Nilai !== null && log.Tajwid_Nilai !== undefined) {
-              lines.push(`     - Nilai: ${log.Tajwid_Nilai}`);
-            }
           }
           return lines;
         };
 
         if (st.logs.length === 1) {
           const log = st.logs[0];
-          const kehadiran = log.Kehadiran || 'A';
-          text += `   • Sikap: ${kehadiran}\n`;
+          if (['Lomba', 'Sakit', 'Izin'].includes(log.Kehadiran)) {
+            text += `   • Sikap: ${log.Kehadiran}\n`;
+          }
 
           const setoranLines = formatSetoranDetail(log);
           if (setoranLines.length > 0) {
@@ -266,8 +262,9 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
           text += `   ───────────────────────────\n`;
           st.logs.forEach((log, logIdx) => {
             text += `   ▸ Input #${logIdx + 1}\n`;
-            const kehadiran = log.Kehadiran || 'A';
-            text += `   • Sikap: ${kehadiran}\n`;
+            if (['Lomba', 'Sakit', 'Izin'].includes(log.Kehadiran)) {
+              text += `   • Sikap: ${log.Kehadiran}\n`;
+            }
 
             const setoranLines = formatSetoranDetail(log);
             if (setoranLines.length > 0) {

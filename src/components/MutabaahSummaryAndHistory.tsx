@@ -1,17 +1,23 @@
 import React from 'react';
-import { MasterSiswa, LogMutabaah, StudentSummary } from '../types';
-import { History, FileText, Calendar, User, MessageSquare, Users } from 'lucide-react';
+import { MasterSiswa, LogMutabaah, StudentSummary, MasterUser } from '../types';
+import { History, FileText, Calendar, User, MessageSquare, Users, Pencil, Trash2 } from 'lucide-react';
 
 interface MutabaahSummaryAndHistoryProps {
   selectedSiswaList: MasterSiswa[];
   logs: LogMutabaah[];
   summary: StudentSummary;
+  currentUser?: MasterUser | null;
+  onEditLog?: (log: LogMutabaah) => void;
+  onDeleteLog?: (log: LogMutabaah) => void;
 }
 
 export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps> = ({
   selectedSiswaList,
   logs,
-  summary
+  summary,
+  currentUser,
+  onEditLog,
+  onDeleteLog
 }) => {
   if (selectedSiswaList.length === 0) {
     return (
@@ -23,7 +29,7 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
           PANEL SUMMARY & RIWAYAT PERKEMBANGAN
         </h3>
         <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-          Pilih siswa atau centang sekelas terlebih dahulu untuk menampilkan kartu ringkasan (summary card) dan 10 riwayat mutabaah terakhir.
+          Pilih siswa atau centang sekelas terlebih dahulu untuk menampilkan kartu ringkasan (summary card) dan 20 riwayat mutabaah terakhir.
         </p>
       </div>
     );
@@ -34,13 +40,13 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
   return (
     <div className="space-y-6">
       
-      {/* TABEL RIWAYAT 10 INPUTAN TERAKHIR */}
+      {/* TABEL RIWAYAT 20 INPUTAN TERAKHIR */}
       <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
         <div className="bg-[#1E3A8A] px-6 py-3.5 border-b-2 border-[#D97706] text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
             <History className="w-5 h-5 text-[#F59E0B]" />
             <h3 className="text-sm font-extrabold tracking-tight">
-              {isMulti ? `RIWAYAT MUTABAAH TERAKHIR (${selectedSiswaList.length} SISWA TERPILIH)` : 'RIWAYAT 10 INPUTAN TERAKHIR'}
+              {isMulti ? `RIWAYAT MUTABAAH TERAKHIR (${selectedSiswaList.length} SISWA TERPILIH)` : 'RIWAYAT 20 INPUTAN TERAKHIR'}
             </h3>
           </div>
           <span className="text-xs text-blue-200 font-medium">
@@ -81,6 +87,7 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
                   <th className="py-3 px-3.5">Detail Tajwid & Nilai</th>
                   {/* REQUIREMENT: Catatan column MUST be at the far right/last column */}
                   <th className="py-3 px-3.5 min-w-[180px]">Catatan Guru</th>
+                  <th className="py-3 px-3.5 whitespace-nowrap">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
@@ -209,6 +216,38 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
                         ) : (
                           <span className="text-slate-400 font-bold">-</span>
                         )}
+                      </td>
+
+                      {/* Aksi (Edit/Delete) */}
+                      <td className="py-3 px-3.5 whitespace-nowrap">
+                        {(() => {
+                          const isOwner = currentUser && log.Email_Guru?.toLowerCase() === currentUser.Email?.toLowerCase();
+                          const isAdmin = currentUser?.Email?.toLowerCase() === 'kurikulum.alwildan29@gmail.com';
+                          const canModify = isOwner || isAdmin;
+                          if (!canModify) return <span className="text-slate-400 font-bold">-</span>;
+                          return (
+                            <div className="flex items-center gap-1">
+                              {onEditLog && (
+                                <button
+                                  onClick={() => onEditLog(log)}
+                                  title="Edit log ini"
+                                  className="p-1.5 text-slate-400 hover:text-[#1E3A8A] hover:bg-blue-50 rounded-lg transition-colors min-h-[28px] min-w-[28px] flex items-center justify-center border border-transparent hover:border-blue-200"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {onDeleteLog && (
+                                <button
+                                  onClick={() => onDeleteLog(log)}
+                                  title="Hapus log ini"
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors min-h-[28px] min-w-[28px] flex items-center justify-center border border-transparent hover:border-rose-200"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                     </tr>

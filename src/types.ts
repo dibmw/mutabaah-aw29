@@ -103,3 +103,9 @@ export interface StudentSummary {
   avgTahfidh: number | null;
   avgTajwid: number | null;
 }
+
+export interface PendingAction {
+  action: 'create' | 'update' | 'delete';
+  log: LogMutabaah;
+  timestamp: string;
+}
