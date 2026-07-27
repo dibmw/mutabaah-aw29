@@ -74,8 +74,9 @@ export default function App() {
     // Keep student selection empty initially until teacher searches/selects students
     setSelectedSiswaList([]);
 
-    // Migrate existing UTC timestamps to WIB, then auto-cleanup and retry pending
+    // Migrate existing UTC timestamps, repair corrupted logs, then auto-cleanup and retry pending
     MutabaahService.migrateTimestampsToWIB();
+    MutabaahService.migrateCorruptedLogs();
     MutabaahService.autoCleanupIfNeeded();
     MutabaahService.retryPendingLogs().catch(() => {});
   }, []);

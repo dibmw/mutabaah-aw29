@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MasterSiswa, MasterSurat, MasterUser, LogMutabaah, AttendanceType, TahsinReference, TahfidhType, TajwidType, MutabaahFormData } from '../types';
+import { MutabaahService } from '../services/mutabaahService';
 import { Calendar, BookOpen, Award, Sparkles, MessageSquare, Save, AlertCircle, RefreshCw, Users } from 'lucide-react';
 
 interface MutabaahFormProps {
@@ -91,8 +92,8 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
       setSetoranChoice('tahsin');
       setTahsinRujukan((editingLog.Tahsin_Rujukan as TahsinReference) || 'Al-Qur\'an');
 
-      const tMulai = parseMulaiAkhir(editingLog.Tahsin_Mulai);
-      const tAkhir = parseMulaiAkhir(editingLog.Tahsin_Akhir);
+      const tMulai = parseMulaiAkhir(MutabaahService.repairCorruptedMulaiAkhir(editingLog.Tahsin_Mulai || ''));
+      const tAkhir = parseMulaiAkhir(MutabaahService.repairCorruptedMulaiAkhir(editingLog.Tahsin_Akhir || ''));
       setTahsinSuratMulai(tMulai.surat || editingLog.Tahsin_Capaian_SuratBab || 'Al-Fatihah');
       setTahsinSuratAkhir(tAkhir.surat || editingLog.Tahsin_Capaian_SuratBab || 'Al-Fatihah');
       setTahsinMulai(tMulai.ayat || '');
@@ -103,8 +104,8 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
       setSetoranChoice('tahfidh');
       setTahfidhJenis((editingLog.Tahfidh_Jenis as TahfidhType) || 'Hafalan Baru (Ziyadah)');
 
-      const hMulai = parseMulaiAkhir(editingLog.Tahfidh_Mulai);
-      const hAkhir = parseMulaiAkhir(editingLog.Tahfidh_Akhir);
+      const hMulai = parseMulaiAkhir(MutabaahService.repairCorruptedMulaiAkhir(editingLog.Tahfidh_Mulai || ''));
+      const hAkhir = parseMulaiAkhir(MutabaahService.repairCorruptedMulaiAkhir(editingLog.Tahfidh_Akhir || ''));
       setTahfidhSuratMulai(hMulai.surat || editingLog.Tahfidh_Surat || 'Al-Fatihah');
       setTahfidhSuratAkhir(hAkhir.surat || editingLog.Tahfidh_Surat || 'Al-Fatihah');
       setTahfidhMulai(hMulai.ayat || '');

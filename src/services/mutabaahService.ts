@@ -81,6 +81,47 @@ export class MutabaahService {
     } catch { /* ignore */ }
   }
 
+  // Repair corrupted "Surat (Surat (ayat))" double-format from edit pre-fill bug
+  static repairCorruptedMulaiAkhir(val: string): string {
+    if (!val) return val;
+    // "Al-Fatihah (Al-Fatihah (5))" → "Al-Fatihah (5)"
+    const match = val.match(/^(.+?)\s*\((.+?)\s*\((\d+|akhir)\)\s*\)$/);
+    if (match) return `${match[1].trim()} (${match[3]})`;
+    return val;
+  }
+
+  static migrateCorruptedLogs(): void {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.LOGS);
+      if (!raw) return;
+      const logs: LogMutabaah[] = JSON.parse(raw);
+      let changed = false;
+      const migrated = logs.map(log => {
+        const newLog = { ...log };
+        if (log.Tahsin_Mulai) {
+          const repaired = this.repairCorruptedMulaiAkhir(log.Tahsin_Mulai);
+          if (repaired !== log.Tahsin_Mulai) { newLog.Tahsin_Mulai = repaired; changed = true; }
+        }
+        if (log.Tahsin_Akhir) {
+          const repaired = this.repairCorruptedMulaiAkhir(log.Tahsin_Akhir);
+          if (repaired !== log.Tahsin_Akhir) { newLog.Tahsin_Akhir = repaired; changed = true; }
+        }
+        if (log.Tahfidh_Mulai) {
+          const repaired = this.repairCorruptedMulaiAkhir(log.Tahfidh_Mulai);
+          if (repaired !== log.Tahfidh_Mulai) { newLog.Tahfidh_Mulai = repaired; changed = true; }
+        }
+        if (log.Tahfidh_Akhir) {
+          const repaired = this.repairCorruptedMulaiAkhir(log.Tahfidh_Akhir);
+          if (repaired !== log.Tahfidh_Akhir) { newLog.Tahfidh_Akhir = repaired; changed = true; }
+        }
+        return newLog;
+      });
+      if (changed) {
+        localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(migrated));
+      }
+    } catch { /* ignore */ }
+  }
+
   // Get all Master Users from local storage
   static getUsers(): MasterUser[] {
     const stored = localStorage.getItem(STORAGE_KEYS.USERS);
