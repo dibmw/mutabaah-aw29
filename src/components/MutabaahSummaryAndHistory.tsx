@@ -205,11 +205,11 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
                       </td>
 
                       {/* Catatan Guru (Far Right Column) */}
-                      <td className="py-3 px-3.5">
+                      <td className="py-3 px-3.5 max-w-[260px] break-words">
                         {log.Catatan ? (
                           <div className="flex items-start gap-1.5 text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200">
                             <MessageSquare className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                            <p className="text-xs leading-relaxed italic">
+                            <p className="text-xs leading-relaxed italic whitespace-pre-wrap">
                               "{log.Catatan}"
                             </p>
                           </div>

@@ -44,6 +44,14 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
     }
   }, [isMultiSelect, setoranChoice]);
 
+  // Helper: parse stored "Surat (ayat)" format back to { surat, ayat }
+  const parseMulaiAkhir = (val: string | undefined): { surat: string; ayat: string } => {
+    if (!val) return { surat: '', ayat: '' };
+    const match = val.match(/^(.+?) \((\d+|akhir)\)$/);
+    if (match) return { surat: match[1], ayat: match[2] };
+    return { surat: '', ayat: '' };
+  };
+
   // Pre-fill form when editingLog is set, reset to defaults when canceled (null)
   useEffect(() => {
     if (!editingLog) {
@@ -82,19 +90,25 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
     if (editingLog.Tahsin_Rujukan || editingLog.Tahsin_Capaian_SuratBab) {
       setSetoranChoice('tahsin');
       setTahsinRujukan((editingLog.Tahsin_Rujukan as TahsinReference) || 'Al-Qur\'an');
-      setTahsinSuratMulai(editingLog.Tahsin_Capaian_SuratBab || 'Al-Fatihah');
-      setTahsinSuratAkhir(editingLog.Tahsin_Capaian_SuratBab || 'Al-Fatihah');
-      setTahsinMulai(editingLog.Tahsin_Mulai || '');
-      setTahsinAkhir(editingLog.Tahsin_Akhir || '');
+
+      const tMulai = parseMulaiAkhir(editingLog.Tahsin_Mulai);
+      const tAkhir = parseMulaiAkhir(editingLog.Tahsin_Akhir);
+      setTahsinSuratMulai(tMulai.surat || editingLog.Tahsin_Capaian_SuratBab || 'Al-Fatihah');
+      setTahsinSuratAkhir(tAkhir.surat || editingLog.Tahsin_Capaian_SuratBab || 'Al-Fatihah');
+      setTahsinMulai(tMulai.ayat || '');
+      setTahsinAkhir(tAkhir.ayat || '');
       setTahsinBabHalaman(editingLog.Tahsin_Capaian_SuratBab || '');
       setTahsinNilai(editingLog.Tahsin_Nilai ?? '');
     } else if (editingLog.Tahfidh_Jenis || editingLog.Tahfidh_Surat) {
       setSetoranChoice('tahfidh');
       setTahfidhJenis((editingLog.Tahfidh_Jenis as TahfidhType) || 'Hafalan Baru (Ziyadah)');
-      setTahfidhSuratMulai(editingLog.Tahfidh_Surat || 'Al-Fatihah');
-      setTahfidhSuratAkhir(editingLog.Tahfidh_Surat || 'Al-Fatihah');
-      setTahfidhMulai(editingLog.Tahfidh_Mulai || '');
-      setTahfidhAkhir(editingLog.Tahfidh_Akhir || '');
+
+      const hMulai = parseMulaiAkhir(editingLog.Tahfidh_Mulai);
+      const hAkhir = parseMulaiAkhir(editingLog.Tahfidh_Akhir);
+      setTahfidhSuratMulai(hMulai.surat || editingLog.Tahfidh_Surat || 'Al-Fatihah');
+      setTahfidhSuratAkhir(hAkhir.surat || editingLog.Tahfidh_Surat || 'Al-Fatihah');
+      setTahfidhMulai(hMulai.ayat || '');
+      setTahfidhAkhir(hAkhir.ayat || '');
       setTahfidhNilai(editingLog.Tahfidh_Nilai ?? '');
     } else if (editingLog.Tajwid_Jenis || editingLog.Tajwid_Capaian) {
       setSetoranChoice('tajwid');
