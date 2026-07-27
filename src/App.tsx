@@ -268,6 +268,7 @@ export default function App() {
   // Handle Cancel Edit
   const handleCancelEdit = useCallback(() => {
     setEditingLog(null);
+    setSelectedSiswaList([]);
   }, []);
 
   // Handle Delete Log

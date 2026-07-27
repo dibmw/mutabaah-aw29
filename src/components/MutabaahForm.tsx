@@ -44,9 +44,36 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
     }
   }, [isMultiSelect, setoranChoice]);
 
-  // Pre-fill form when editingLog is set
+  // Pre-fill form when editingLog is set, reset to defaults when canceled (null)
   useEffect(() => {
-    if (!editingLog) return;
+    if (!editingLog) {
+      // Reset all fields to initial state
+      setTanggal(todayStr);
+      setKehadiran('A');
+      setSetoranChoice('none');
+      setCatatan('');
+      setTahsinRujukan('Al-Qur\'an');
+      setTahsinSuratMulai('Al-Fatihah');
+      setTahsinSuratAkhir('Al-Fatihah');
+      setTahsinMulai('');
+      setTahsinAkhir('');
+      setTahsinBabHalaman('');
+      setTahsinNilai('');
+      setTahfidhJenis('Hafalan Baru (Ziyadah)');
+      setTahfidhSuratMulai('Al-Fatihah');
+      setTahfidhSuratAkhir('Al-Fatihah');
+      setTahfidhMulai('');
+      setTahfidhAkhir('');
+      setTahfidhNilai('');
+      setTajwidJenis('Tajwid Metode Asy-Syafi\'i');
+      setTajwidCapaian('');
+      setTajwidNilai('');
+      setTahsinMulaiError('');
+      setTahsinAkhirError('');
+      setTahfidhMulaiError('');
+      setTahfidhAkhirError('');
+      return;
+    }
     setTanggal(editingLog.Tanggal_Mutabaah || todayStr);
     setKehadiran(editingLog.Kehadiran || 'A');
     setCatatan(editingLog.Catatan || '');

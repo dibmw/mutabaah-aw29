@@ -61,25 +61,33 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
     setSelectedTeacher('MY_ACCOUNT');
   }, [currentUser, isKurikulum]);
 
-  // Extract unique classes from siswaList, sorted naturally by grade level (Kelas 1, Kelas 2... Kelas 10)
-  const uniqueClasses = useMemo(() => {
-    const classes = Array.from(new Set(siswaList.map(s => s.Kelas).filter(Boolean))).map(c => String(c));
-    classes.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-    return classes;
-  }, [siswaList]);
-
-  // Set default selectedClass to the first available class
-  useEffect(() => {
-    if (uniqueClasses.length > 0 && (!selectedClass || !uniqueClasses.includes(selectedClass))) {
-      setSelectedClass(uniqueClasses[0]);
-    }
-  }, [uniqueClasses, selectedClass]);
-
   // Retrieve logs from MutabaahService / local state
   const allLogs: LogMutabaah[] = useMemo(() => {
     if (!isOpen) return [];
     return logsState.length > 0 ? logsState : MutabaahService.getLogs();
   }, [isOpen, logsState, selectedDate]);
+
+  // Extract unique classes from logs on the selected date (only classes with actual input)
+  const uniqueClasses = useMemo(() => {
+    const dateLogs = allLogs.filter(l => l.Tanggal_Mutabaah === selectedDate);
+    const classes = Array.from(new Set(
+      dateLogs.map(l => {
+        const student = siswaList.find(s => s.ID_Siswa === l.ID_Siswa);
+        return student?.Kelas || '';
+      }).filter(Boolean)
+    )).map(c => String(c));
+    classes.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    return classes;
+  }, [allLogs, selectedDate, siswaList]);
+
+  // Set default selectedClass to the first available class with input
+  useEffect(() => {
+    if (uniqueClasses.length > 0 && (!selectedClass || !uniqueClasses.includes(selectedClass))) {
+      setSelectedClass(uniqueClasses[0]);
+    } else if (uniqueClasses.length === 0) {
+      setSelectedClass('');
+    }
+  }, [uniqueClasses, selectedClass]);
 
   // List of all teachers (from Master Users + logs) for the filter dropdown
   const allTeachersList = useMemo(() => {
@@ -401,11 +409,17 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
                 onChange={(e) => setSelectedClass(e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:ring-2 focus:ring-[#1E3A8A] min-h-[42px] shadow-2xs"
               >
-                {uniqueClasses.map((cls) => (
-                  <option key={cls} value={cls}>
-                    {cls}
+                {uniqueClasses.length > 0 ? (
+                  uniqueClasses.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))
+                ) : (
+                  <option value="" disabled>
+                    Tidak ada input pada tanggal ini
                   </option>
-                ))}
+                )}
               </select>
             </div>
           </div>
