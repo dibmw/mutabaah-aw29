@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
-import { MasterUser } from '../types';
-import { MutabaahService } from '../services/mutabaahService';
-import { ShieldAlert, LogIn, Mail, BookOpen, Loader2 } from 'lucide-react';
+import React, { useState } from "react";
+import { MasterUser } from "../types";
+import { MutabaahService } from "../services/mutabaahService";
+import { ShieldAlert, LogIn, Mail, BookOpen, Loader2 } from "lucide-react";
 
 interface LoginModalProps {
   isOpen: boolean;
   onLoginSuccess: (user: MasterUser) => void;
 }
 
-export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }) => {
-  const [emailInput, setEmailInput] = useState('');
+export const LoginModal: React.FC<LoginModalProps> = ({
+  isOpen,
+  onLoginSuccess,
+}) => {
+  const [emailInput, setEmailInput] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -33,7 +36,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
 
       if (!matchedUser) {
         // EXACT ERROR MESSAGE REQUIREMENT MAINTAINED
-        setErrorMessage(`Akses Ditolak. Email ${cleanEmail} belum terdaftar di database master user.`);
+        setErrorMessage(
+          `Akses Ditolak. Email ${cleanEmail} belum terdaftar di database master user.`,
+        );
         return;
       }
 
@@ -41,7 +46,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
       MutabaahService.setCurrentUser(matchedUser);
       onLoginSuccess(matchedUser);
     } catch {
-      setErrorMessage("Gagal menghubungkan ke database server. Periksa koneksi internet Anda.");
+      setErrorMessage(
+        "Gagal menghubungkan ke database server. Periksa koneksi internet Anda.",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -50,13 +57,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden">
-        
         {/* Modal Header */}
         <div className="bg-[#1E3A8A] p-6 text-white text-center relative border-b-4 border-[#D97706]">
           <div className="w-16 h-16 bg-white/10 rounded-2xl mx-auto flex items-center justify-center mb-3 backdrop-blur-md border border-white/20">
             <BookOpen className="w-8 h-8 text-[#F59E0B]" />
           </div>
-          <h2 className="text-xl font-extrabold tracking-tight">Sistem Autentikasi Guru</h2>
+          <h2 className="text-xl font-extrabold tracking-tight">
+            Login Input Mutabaah
+          </h2>
           <p className="text-xs text-blue-200 mt-1">
             Silakan masukkan Email Guru yang terdaftar di Master User
           </p>
@@ -64,13 +72,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
 
         {/* Modal Body */}
         <div className="p-6 space-y-5">
-
           {/* Error Alert Box */}
           {errorMessage && (
             <div className="bg-rose-50 border-l-4 border-rose-600 p-4 rounded-r-xl flex items-start gap-3 animate-head-shake">
               <ShieldAlert className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
               <div>
-                <h4 className="text-xs font-bold text-rose-800 uppercase tracking-wider">Akses Ditolak</h4>
+                <h4 className="text-xs font-bold text-rose-800 uppercase tracking-wider">
+                  Akses Ditolak
+                </h4>
                 <p className="text-xs text-rose-700 font-medium mt-0.5 leading-relaxed">
                   {errorMessage}
                 </p>
@@ -78,7 +87,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
             </div>
           )}
 
-          <form onSubmit={handleLoginSubmit} className="space-y-4" autoComplete="off">
+          <form
+            onSubmit={handleLoginSubmit}
+            className="space-y-4"
+            autoComplete="off"
+          >
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
                 Email Guru / User
@@ -105,7 +118,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
                 />
               </div>
               <p className="text-[11px] text-slate-500 mt-1.5 font-medium">
-                * Ketik manual alamat email guru yang telah terdaftar di master database.
+                * Ketik manual alamat email guru yang telah terdaftar di master
+                database.
               </p>
             </div>
 
@@ -127,7 +141,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
               )}
             </button>
           </form>
-
         </div>
 
         <div className="bg-slate-50 px-6 py-3.5 border-t border-slate-200/80 text-center rounded-b-2xl">
@@ -138,7 +151,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
             </span>
           </p>
         </div>
-
       </div>
     </div>
   );
