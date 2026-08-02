@@ -18,53 +18,60 @@ const STORAGE_KEYS = {
   PENDING_LOGS: 'mutabaah_pending_logs_v1'
 };
 
-// Helper to parse CSV text into rows safely.
-// Handles quoted fields that span multiple lines (e.g. Catatan with newlines),
-// escaped double quotes (""), and both \n and \r\n line endings.
-function parseCSV(csvText: string): string[][] {
-  if (csvText.charCodeAt(0) === 0xFEFF) csvText = csvText.slice(1);
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = '';
-  let insideQuote = false;
+// Helper to parse gviz JSON export (tqx=out:json) into rows (string[][]).
+// Produces the same shape as the old CSV parser (rows[0] = header) so the
+// downstream parsing logic stays unchanged. Reads raw cell values, which
+// avoids the CSV export mangling numbers (e.g. 100 -> "10") and keeps
+// multi-line cells (e.g. Catatan) intact.
+function parseGvizJson(jsonText: string): string[][] {
+  const startMarker = 'google.visualization.Query.setResponse(';
+  const start = jsonText.indexOf(startMarker);
+  const end = jsonText.lastIndexOf(');');
+  if (start === -1 || end === -1) return [];
 
-  for (let i = 0; i < csvText.length; i++) {
-    const char = csvText[i];
-    if (insideQuote) {
-      if (char === '"') {
-        if (csvText[i + 1] === '"') {
-          field += '"';
-          i++;
-        } else {
-          insideQuote = false;
-        }
-      } else {
-        field += char;
-      }
-    } else {
-      if (char === '"') {
-        insideQuote = true;
-      } else if (char === ',') {
-        row.push(field);
-        field = '';
-      } else if (char === '\n' || char === '\r') {
-        if (char === '\r' && csvText[i + 1] === '\n') {
-          i++;
-        }
-        row.push(field);
-        field = '';
-        rows.push(row);
-        row = [];
-      } else {
-        field += char;
+  const payload = jsonText.slice(start + startMarker.length, end);
+  let data: { table?: { cols?: Array<{ label?: string; type?: string }>; rows?: Array<{ c?: Array<{ v?: unknown } | null> }> } };
+  try {
+    data = JSON.parse(payload);
+  } catch {
+    return [];
+  }
+
+  const cols = data?.table?.cols ?? [];
+  const gvizRows = data?.table?.rows ?? [];
+
+  const normalize = (cell: { v?: unknown } | null | undefined): string => {
+    const v = cell?.v;
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'string' && v.startsWith('Date(')) {
+      // Date(Y,M,D[,h,m,s]) with month 0-indexed
+      const m = /^Date\((\d+),(\d+),(\d+)(?:,(\d+),(\d+),(\d+))?\)$/.exec(v);
+      if (m) {
+        const pad = (n: string) => n.padStart(2, '0');
+        const dateStr = `${m[1]}-${pad(String(Number(m[2]) + 1))}-${pad(m[3])}`;
+        return m[4] !== undefined ? `${dateStr} ${pad(m[4])}:${pad(m[5])}:${pad(m[6])}` : dateStr;
       }
     }
+    if (typeof v === 'string') return v.trim();
+    if (typeof v === 'number') return String(v);
+    if (typeof v === 'boolean') return String(v);
+    return String(v);
+  };
+
+  const toRow = (row: { c?: Array<{ v?: unknown } | null> } | undefined): string[] =>
+    (row?.c ?? []).map(normalize);
+
+  const hasLabels = cols.some(c => (c.label ?? '').trim().length > 0);
+
+  if (hasLabels) {
+    const rows = [cols.map(c => (c.label ?? '').trim())];
+    for (const row of gvizRows) rows.push(toRow(row));
+    return rows;
   }
 
-  if (field.length > 0 || row.length > 0) {
-    row.push(field);
-    rows.push(row);
-  }
+  // Master_User: empty column labels -> header is the first data row.
+  const rows: string[][] = [];
+  for (const row of gvizRows) rows.push(toRow(row));
   return rows;
 }
 
@@ -685,18 +692,18 @@ export class MutabaahService {
 
       for (const sheetName of sheets) {
         const cacheBuster = Date.now();
-        const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}&_t=${cacheBuster}`;
+        const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&_t=${cacheBuster}`;
         try {
           const res = await fetch(url);
           if (res.ok) {
-            const csvText = await res.text();
+            const jsonText = await res.text();
             
-            if (csvText.trim().startsWith('<')) {
+            if (jsonText.trim().startsWith('<')) {
               htmlDetected = true;
               continue;
             }
 
-            const rows = parseCSV(csvText).filter(r => r.some(cell => cell.trim().length > 0));
+            const rows = parseGvizJson(jsonText).filter(r => r.some(cell => cell.trim().length > 0));
             
             if (rows.length >= 1) {
               fetchedAny = true;

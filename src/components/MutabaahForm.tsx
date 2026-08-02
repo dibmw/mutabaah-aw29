@@ -53,6 +53,25 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
     return { surat: '', ayat: '' };
   };
 
+  // Helper: parse detail "Mulai: Surat (ayat) s.d. Akhir: Surat (ayat)" stored in
+  // Tahsin_Capaian_Detail / Tahfidh_Ayat (the sheet has no *_Mulai columns).
+  const parseDetailMulaiAkhir = (val: string | undefined): { mulai: { surat: string; ayat: string }; akhir: { surat: string; ayat: string } } | null => {
+    if (!val) return null;
+    const match = val.trim().match(/^Mulai:\s*(.+?)\s*\((\d+|akhir)\)\s*s\.d\.\s*Akhir:\s*(.+?)\s*\((\d+|akhir)\)$/);
+    if (!match) return null;
+    return {
+      mulai: { surat: match[1].trim(), ayat: match[2] },
+      akhir: { surat: match[3].trim(), ayat: match[4] },
+    };
+  };
+
+  // Prefer the explicit *_Mulai value; fall back to the parsed detail when empty.
+  const pickSuratAyat = (stored: string | undefined, fallbackSurat?: string, fallbackAyat?: string): { surat: string; ayat: string } => {
+    const p = parseMulaiAkhir(MutabaahService.repairCorruptedMulaiAkhir(stored || ''));
+    if (p.surat || p.ayat) return p;
+    return { surat: fallbackSurat || '', ayat: fallbackAyat || '' };
+  };
+
   // Pre-fill form when editingLog is set, reset to defaults when canceled (null)
   useEffect(() => {
     if (!editingLog) {
@@ -92,8 +111,9 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
       setSetoranChoice('tahsin');
       setTahsinRujukan((editingLog.Tahsin_Rujukan as TahsinReference) || 'Al-Qur\'an');
 
-      const tMulai = parseMulaiAkhir(MutabaahService.repairCorruptedMulaiAkhir(editingLog.Tahsin_Mulai || ''));
-      const tAkhir = parseMulaiAkhir(MutabaahService.repairCorruptedMulaiAkhir(editingLog.Tahsin_Akhir || ''));
+      const tDetail = parseDetailMulaiAkhir(editingLog.Tahsin_Capaian_Detail);
+      const tMulai = pickSuratAyat(editingLog.Tahsin_Mulai, tDetail?.mulai.surat, tDetail?.mulai.ayat);
+      const tAkhir = pickSuratAyat(editingLog.Tahsin_Akhir, tDetail?.akhir.surat, tDetail?.akhir.ayat);
       setTahsinSuratMulai(tMulai.surat || editingLog.Tahsin_Capaian_SuratBab || 'Al-Fatihah');
       setTahsinSuratAkhir(tAkhir.surat || editingLog.Tahsin_Capaian_SuratBab || 'Al-Fatihah');
       setTahsinMulai(tMulai.ayat || '');
@@ -104,8 +124,9 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
       setSetoranChoice('tahfidh');
       setTahfidhJenis((editingLog.Tahfidh_Jenis as TahfidhType) || 'Hafalan Baru (Ziyadah)');
 
-      const hMulai = parseMulaiAkhir(MutabaahService.repairCorruptedMulaiAkhir(editingLog.Tahfidh_Mulai || ''));
-      const hAkhir = parseMulaiAkhir(MutabaahService.repairCorruptedMulaiAkhir(editingLog.Tahfidh_Akhir || ''));
+      const hDetail = parseDetailMulaiAkhir(editingLog.Tahfidh_Ayat);
+      const hMulai = pickSuratAyat(editingLog.Tahfidh_Mulai, hDetail?.mulai.surat, hDetail?.mulai.ayat);
+      const hAkhir = pickSuratAyat(editingLog.Tahfidh_Akhir, hDetail?.akhir.surat, hDetail?.akhir.ayat);
       setTahfidhSuratMulai(hMulai.surat || editingLog.Tahfidh_Surat || 'Al-Fatihah');
       setTahfidhSuratAkhir(hAkhir.surat || editingLog.Tahfidh_Surat || 'Al-Fatihah');
       setTahfidhMulai(hMulai.ayat || '');
