@@ -18,25 +18,54 @@ const STORAGE_KEYS = {
   PENDING_LOGS: 'mutabaah_pending_logs_v1'
 };
 
-// Helper to parse simple CSV text safely
-function parseCSVRow(row: string): string[] {
-  const result: string[] = [];
+// Helper to parse CSV text into rows safely.
+// Handles quoted fields that span multiple lines (e.g. Catatan with newlines),
+// escaped double quotes (""), and both \n and \r\n line endings.
+function parseCSV(csvText: string): string[][] {
+  if (csvText.charCodeAt(0) === 0xFEFF) csvText = csvText.slice(1);
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
   let insideQuote = false;
-  let currentVal = '';
-  
-  for (let i = 0; i < row.length; i++) {
-    const char = row[i];
-    if (char === '"') {
-      insideQuote = !insideQuote;
-    } else if (char === ',' && !insideQuote) {
-      result.push(currentVal.trim().replace(/^"|"$/g, ''));
-      currentVal = '';
+
+  for (let i = 0; i < csvText.length; i++) {
+    const char = csvText[i];
+    if (insideQuote) {
+      if (char === '"') {
+        if (csvText[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          insideQuote = false;
+        }
+      } else {
+        field += char;
+      }
     } else {
-      currentVal += char;
+      if (char === '"') {
+        insideQuote = true;
+      } else if (char === ',') {
+        row.push(field);
+        field = '';
+      } else if (char === '\n' || char === '\r') {
+        if (char === '\r' && csvText[i + 1] === '\n') {
+          i++;
+        }
+        row.push(field);
+        field = '';
+        rows.push(row);
+        row = [];
+      } else {
+        field += char;
+      }
     }
   }
-  result.push(currentVal.trim().replace(/^"|"$/g, ''));
-  return result;
+
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
 }
 
 export class MutabaahService {
@@ -667,15 +696,15 @@ export class MutabaahService {
               continue;
             }
 
-            const lines = csvText.split(/\r?\n/).filter(line => line.trim().length > 0);
+            const rows = parseCSV(csvText).filter(r => r.some(cell => cell.trim().length > 0));
             
-            if (lines.length >= 1) {
+            if (rows.length >= 1) {
               fetchedAny = true;
 
               // --- PARSING SHEET: Master_User ---
               if (sheetName === 'Master_User') {
                 const users: MasterUser[] = [];
-                const headers = parseCSVRow(lines[0]).map(h => h.toLowerCase().trim());
+                const headers = rows[0].map(h => h.toLowerCase().trim());
 
                 // Deteksi indeks kolom berdasarkan kata kunci header
                 let idIdx = headers.findIndex(h => h.includes('id'));
@@ -686,8 +715,8 @@ export class MutabaahService {
                 if (namaIdx === -1) namaIdx = 2;
                 if (idIdx === -1) idIdx = 0;
 
-                for (let i = 1; i < lines.length; i++) {
-                  const cols = parseCSVRow(lines[i]);
+                for (let i = 1; i < rows.length; i++) {
+                  const cols = rows[i];
                   const rawEmail = cols[emailIdx] ? cols[emailIdx].trim() : '';
 
                   if (rawEmail && rawEmail.includes('@')) {
@@ -714,8 +743,8 @@ export class MutabaahService {
               // --- PARSING SHEET: Master_Siswa ---
               } else if (sheetName === 'Master_Siswa') {
                 const siswaList: MasterSiswa[] = [];
-                for (let i = 1; i < lines.length; i++) {
-                  const cols = parseCSVRow(lines[i]);
+                for (let i = 1; i < rows.length; i++) {
+                  const cols = rows[i];
                   if (cols.length >= 2 && cols[0]) {
                     siswaList.push({
                       ID_Siswa: cols[0].trim(),
@@ -733,8 +762,8 @@ export class MutabaahService {
               // --- PARSING SHEET: Log_Mutabaah ---
               } else if (sheetName === 'Log_Mutabaah') {
                 const logsFromSheet: LogMutabaah[] = [];
-                for (let i = 1; i < lines.length; i++) {
-                  const cols = parseCSVRow(lines[i]);
+                for (let i = 1; i < rows.length; i++) {
+                  const cols = rows[i];
                   if (cols.length >= 1 && (cols[0] || cols[2] || cols[5] || cols[6])) {
                     logsFromSheet.push({
                       ID_Log: cols[0] ? cols[0].trim() : `LOG-SHEET-${i}`,
