@@ -212,6 +212,7 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
   const hasTahsin = setoranChoice === 'tahsin';
   const hasTahfidh = setoranChoice === 'tahfidh';
   const hasTajwid = setoranChoice === 'tajwid';
+  const isHadir = ['A', 'B', 'C'].includes(kehadiran);
 
   // Reset form helper
   const resetForm = () => {
@@ -273,46 +274,53 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
     }
 
     // Validation 4: Catatan Guru is REQUIRED if kehadiran is A, B, or C; otherwise OPTIONAL
-    const isCatatanRequired = ['A', 'B', 'C'].includes(kehadiran);
+    const isHadir = ['A', 'B', 'C'].includes(kehadiran);
+    const isCatatanRequired = isHadir;
     if (isCatatanRequired && !catatan.trim()) {
       onError("Gagal Simpan: Catatan Guru wajib diisi untuk status A, B, atau C.");
       return;
     }
 
-    // Validation 5: Scores are REQUIRED and must be between 0 and 100
+    // Validation 5: Scores are REQUIRED when student is present; must be between 0 and 100 if filled
     if (hasTahsin) {
-      if (tahsinNilai === '') {
+      if (isHadir && tahsinNilai === '') {
         onError("Nilai Tahsin wajib diisi.");
         return;
       }
-      const val = Number(tahsinNilai);
-      if (isNaN(val) || val < 0 || val > 100) {
-        onError("Nilai Tahsin harus berupa angka 0 - 100.");
-        return;
+      if (tahsinNilai !== '') {
+        const val = Number(tahsinNilai);
+        if (isNaN(val) || val < 0 || val > 100) {
+          onError("Nilai Tahsin harus berupa angka 0 - 100.");
+          return;
+        }
       }
     }
 
     if (hasTahfidh) {
-      if (tahfidhNilai === '') {
+      if (isHadir && tahfidhNilai === '') {
         onError("Nilai Tahfidh wajib diisi.");
         return;
       }
-      const val = Number(tahfidhNilai);
-      if (isNaN(val) || val < 0 || val > 100) {
-        onError("Nilai Tahfidh harus berupa angka 0 - 100.");
-        return;
+      if (tahfidhNilai !== '') {
+        const val = Number(tahfidhNilai);
+        if (isNaN(val) || val < 0 || val > 100) {
+          onError("Nilai Tahfidh harus berupa angka 0 - 100.");
+          return;
+        }
       }
     }
 
     if (hasTajwid) {
-      if (tajwidNilai === '') {
+      if (isHadir && tajwidNilai === '') {
         onError("Nilai Tajwid wajib diisi.");
         return;
       }
-      const val = Number(tajwidNilai);
-      if (isNaN(val) || val < 0 || val > 100) {
-        onError("Nilai Tajwid harus berupa angka 0 - 100.");
-        return;
+      if (tajwidNilai !== '') {
+        const val = Number(tajwidNilai);
+        if (isNaN(val) || val < 0 || val > 100) {
+          onError("Nilai Tajwid harus berupa angka 0 - 100.");
+          return;
+        }
       }
     }
 
@@ -339,6 +347,39 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
       }
       if (akhirErr) {
         onError(`Ayat Akhir Tahfidh: ${akhirErr}`);
+        return;
+      }
+    }
+
+    // Validation 7: Setoran detail fields are REQUIRED when student is present (A/B/C)
+    if (isHadir) {
+      if (hasTahsin) {
+        if (tahsinRujukan === "Al-Qur'an") {
+          if (!tahsinMulai) {
+            onError("Ayat Mulai Tahsin wajib diisi.");
+            return;
+          }
+          if (!tahsinAkhir) {
+            onError("Ayat Akhir Tahsin wajib diisi.");
+            return;
+          }
+        } else if (!tahsinBabHalaman.trim()) {
+          onError("Bab & Halaman Tahsin wajib diisi.");
+          return;
+        }
+      }
+      if (hasTahfidh) {
+        if (!tahfidhMulai) {
+          onError("Ayat Mulai Tahfidh wajib diisi.");
+          return;
+        }
+        if (!tahfidhAkhir) {
+          onError("Ayat Akhir Tahfidh wajib diisi.");
+          return;
+        }
+      }
+      if (hasTajwid && !tajwidCapaian.trim()) {
+        onError("Capaian Bab & Halaman Tajwid wajib diisi.");
         return;
       }
     }
@@ -680,12 +721,13 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Ayat Mulai
+                        Ayat Mulai {isHadir && <span className="text-rose-600">*</span>}
                       </label>
                       <input
                         type="number"
                         min="1"
                         max={getMaxAyat(tahsinSuratMulai) || undefined}
+                        required={isHadir}
                         value={tahsinMulai}
                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
                         onChange={(e) => {
@@ -727,12 +769,13 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Ayat Akhir
+                        Ayat Akhir {isHadir && <span className="text-rose-600">*</span>}
                       </label>
                       <input
                         type="number"
                         min="1"
                         max={getMaxAyat(tahsinSuratAkhir) || undefined}
+                        required={isHadir}
                         value={tahsinAkhir}
                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
                         onChange={(e) => {
@@ -751,10 +794,11 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
               ) : (
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Bab & Halaman ({tahsinRujukan})
+                    Bab & Halaman ({tahsinRujukan}) {isHadir && <span className="text-rose-600">*</span>}
                   </label>
                   <input
                     type="text"
+                    required={isHadir}
                     value={tahsinBabHalaman}
                     onChange={(e) => setTahsinBabHalaman(e.target.value)}
                     placeholder="contoh: Jilid 3, Hal 12 - 15"
@@ -765,13 +809,13 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nilai Tahsin (0 - 100) <span className="text-rose-600">*</span>
+                  Nilai Tahsin (0 - 100) {isHadir && <span className="text-rose-600">*</span>}
                 </label>
                 <input
                   type="number"
                   min="0"
                   max="100"
-                  required
+                  required={isHadir}
                   value={tahsinNilai}
                   onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   onChange={(e) => setTahsinNilai(e.target.value)}
@@ -832,12 +876,13 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      Ayat Mulai
+                      Ayat Mulai {isHadir && <span className="text-rose-600">*</span>}
                     </label>
                     <input
                       type="number"
                       min="1"
                       max={getMaxAyat(tahfidhSuratMulai) || undefined}
+                      required={isHadir}
                       value={tahfidhMulai}
                       onWheel={(e) => (e.target as HTMLInputElement).blur()}
                       onChange={(e) => {
@@ -879,12 +924,13 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      Ayat Akhir
+                      Ayat Akhir {isHadir && <span className="text-rose-600">*</span>}
                     </label>
                     <input
                       type="number"
                       min="1"
                       max={getMaxAyat(tahfidhSuratAkhir) || undefined}
+                      required={isHadir}
                       value={tahfidhAkhir}
                       onWheel={(e) => (e.target as HTMLInputElement).blur()}
                       onChange={(e) => {
@@ -903,13 +949,13 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nilai Tahfidh (0 - 100) <span className="text-rose-600">*</span>
+                  Nilai Tahfidh (0 - 100) {isHadir && <span className="text-rose-600">*</span>}
                 </label>
                 <input
                   type="number"
                   min="0"
                   max="100"
-                  required
+                  required={isHadir}
                   value={tahfidhNilai}
                   onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   onChange={(e) => setTahfidhNilai(e.target.value)}
@@ -948,10 +994,11 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Capaian Bab & Halaman
+                  Capaian Bab & Halaman {isHadir && <span className="text-rose-600">*</span>}
                 </label>
                 <input
                   type="text"
+                  required={isHadir}
                   value={tajwidCapaian}
                   onChange={(e) => setTajwidCapaian(e.target.value)}
                   placeholder="contoh: Bab Hukum Nun Mati Hal. 12"
@@ -961,13 +1008,13 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nilai Tajwid (0 - 100) <span className="text-rose-600">*</span>
+                  Nilai Tajwid (0 - 100) {isHadir && <span className="text-rose-600">*</span>}
                 </label>
                 <input
                   type="number"
                   min="0"
                   max="100"
-                  required
+                  required={isHadir}
                   value={tajwidNilai}
                   onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   onChange={(e) => setTajwidNilai(e.target.value)}
