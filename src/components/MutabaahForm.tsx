@@ -765,12 +765,13 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nilai Tahsin (0 - 100)
+                  Nilai Tahsin (0 - 100) <span className="text-rose-600">*</span>
                 </label>
                 <input
                   type="number"
                   min="0"
                   max="100"
+                  required
                   value={tahsinNilai}
                   onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   onChange={(e) => setTahsinNilai(e.target.value)}
@@ -902,12 +903,13 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nilai Tahfidh (0 - 100)
+                  Nilai Tahfidh (0 - 100) <span className="text-rose-600">*</span>
                 </label>
                 <input
                   type="number"
                   min="0"
                   max="100"
+                  required
                   value={tahfidhNilai}
                   onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   onChange={(e) => setTahfidhNilai(e.target.value)}
@@ -959,12 +961,13 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nilai Tajwid (0 - 100)
+                  Nilai Tajwid (0 - 100) <span className="text-rose-600">*</span>
                 </label>
                 <input
                   type="number"
                   min="0"
                   max="100"
+                  required
                   value={tajwidNilai}
                   onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   onChange={(e) => setTajwidNilai(e.target.value)}
