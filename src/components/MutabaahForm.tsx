@@ -31,6 +31,9 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
   const [tanggal, setTanggal] = useState(todayStr);
   const [kehadiran, setKehadiran] = useState<AttendanceType>('A');
 
+  // True when student is present (A/B/C); setoran fields are required only in this case
+  const isHadir = ['A', 'B', 'C'].includes(kehadiran);
+
   // Multi-select flag
   const isMultiSelect = selectedSiswaList.length > 1;
 
@@ -38,12 +41,19 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
   type SetoranChoice = 'none' | 'tahsin' | 'tahfidh' | 'tajwid';
   const [setoranChoice, setSetoranChoice] = useState<SetoranChoice>('none');
 
-  // Auto switch off Tahfidh or None if teacher selects multiple students
+  // Auto switch off Tahfidh or None if teacher selects multiple students (only when present)
   useEffect(() => {
-    if (isMultiSelect && (setoranChoice === 'tahfidh' || setoranChoice === 'none')) {
+    if (isMultiSelect && isHadir && (setoranChoice === 'tahfidh' || setoranChoice === 'none')) {
       setSetoranChoice('tahsin');
     }
-  }, [isMultiSelect, setoranChoice]);
+  }, [isMultiSelect, isHadir, setoranChoice]);
+
+  // When student is absent, only "Tanpa Setoran" is allowed
+  useEffect(() => {
+    if (!isHadir && setoranChoice !== 'none') {
+      setSetoranChoice('none');
+    }
+  }, [isHadir, setoranChoice]);
 
   // Helper: parse stored "Surat (ayat)" format back to { surat, ayat }
   const parseMulaiAkhir = (val: string | undefined): { surat: string; ayat: string } => {
@@ -212,7 +222,6 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
   const hasTahsin = setoranChoice === 'tahsin';
   const hasTahfidh = setoranChoice === 'tahfidh';
   const hasTajwid = setoranChoice === 'tajwid';
-  const isHadir = ['A', 'B', 'C'].includes(kehadiran);
 
   // Reset form helper
   const resetForm = () => {
@@ -274,7 +283,6 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
     }
 
     // Validation 4: Catatan Guru is REQUIRED if kehadiran is A, B, or C; otherwise OPTIONAL
-    const isHadir = ['A', 'B', 'C'].includes(kehadiran);
     const isCatatanRequired = isHadir;
     if (isCatatanRequired && !catatan.trim()) {
       onError("Gagal Simpan: Catatan Guru wajib diisi untuk status A, B, atau C.");
@@ -577,7 +585,11 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                 <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-bold block">Pilihan Massal ({selectedSiswaList.length} Siswa Terpilih)</span>
-                  <span>Input setoran massal memunculkan pilihan <strong>Tahsin</strong> dan <strong>Tajwid</strong> saja.</span>
+                  {isHadir ? (
+                    <span>Input setoran massal memunculkan pilihan <strong>Tahsin</strong> dan <strong>Tajwid</strong> saja.</span>
+                  ) : (
+                    <span>Siswa tidak hadir, hanya bisa input <strong>Tanpa Setoran</strong> (Kehadiran saja).</span>
+                  )}
                 </div>
               </div>
             ) : (
@@ -586,10 +598,16 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
               </p>
             )}
 
+            {!isHadir && !isMultiSelect && (
+              <p className="text-[11px] bg-rose-50 border border-rose-200 text-rose-700 px-3 py-2 rounded-lg font-medium">
+                Siswa tidak hadir — setoran dinonaktifkan. Hanya bisa input kehadiran & catatan.
+              </p>
+            )}
+
             {/* Segmented Radio Cards for Single Setoran Choice */}
             <div className={`grid gap-2.5 pt-1 ${isMultiSelect ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'}`}>
-              {/* Option 0: None (Hanya dimunculkan untuk input individu 1 siswa) */}
-              {!isMultiSelect && (
+              {/* Option 0: None (Hanya dimunculkan untuk input individu 1 siswa / siswa tidak hadir) */}
+              {(!isMultiSelect || !isHadir) && (
                 <button
                   type="button"
                   onClick={() => setSetoranChoice('none')}
@@ -610,10 +628,13 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
               <button
                 type="button"
                 onClick={() => setSetoranChoice('tahsin')}
+                disabled={!isHadir}
                 className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
-                  setoranChoice === 'tahsin'
-                    ? 'bg-[#1E3A8A] text-white border-blue-900 shadow-md ring-2 ring-blue-800'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-blue-50'
+                  !isHadir
+                    ? 'bg-slate-100 text-slate-400 border-slate-200 opacity-60 cursor-not-allowed'
+                    : setoranChoice === 'tahsin'
+                      ? 'bg-[#1E3A8A] text-white border-blue-900 shadow-md ring-2 ring-blue-800'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-blue-50'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -630,10 +651,13 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                 <button
                   type="button"
                   onClick={() => setSetoranChoice('tahfidh')}
+                  disabled={!isHadir}
                   className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
-                    setoranChoice === 'tahfidh'
-                      ? 'bg-[#D97706] text-white border-amber-800 shadow-md ring-2 ring-amber-600'
-                      : 'bg-white text-slate-700 border-slate-200 hover:bg-amber-50'
+                    !isHadir
+                      ? 'bg-slate-100 text-slate-400 border-slate-200 opacity-60 cursor-not-allowed'
+                      : setoranChoice === 'tahfidh'
+                        ? 'bg-[#D97706] text-white border-amber-800 shadow-md ring-2 ring-amber-600'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-amber-50'
                   }`}
                   title="Setoran Tahfidh"
                 >
@@ -651,10 +675,13 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
               <button
                 type="button"
                 onClick={() => setSetoranChoice('tajwid')}
+                disabled={!isHadir}
                 className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
-                  setoranChoice === 'tajwid'
-                    ? 'bg-purple-800 text-white border-purple-900 shadow-md ring-2 ring-purple-700'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-purple-50'
+                  !isHadir
+                    ? 'bg-slate-100 text-slate-400 border-slate-200 opacity-60 cursor-not-allowed'
+                    : setoranChoice === 'tajwid'
+                      ? 'bg-purple-800 text-white border-purple-900 shadow-md ring-2 ring-purple-700'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-purple-50'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -669,7 +696,7 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
           </div>
 
           {/* Render Active Setoran Section Fields conditionally */}
-          {hasTahsin && (
+          {hasTahsin && isHadir && (
             <div className="p-4 rounded-xl border bg-blue-50/50 border-blue-300 space-y-4 animate-fade-in">
               <div className="flex items-center justify-between border-b border-blue-200 pb-2">
                 <span className="text-xs font-bold text-[#1E3A8A] uppercase tracking-wider flex items-center gap-1.5">
@@ -826,7 +853,7 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
             </div>
           )}
 
-          {hasTahfidh && (
+          {hasTahfidh && isHadir && (
             <div className="p-4 rounded-xl border bg-amber-50/50 border-amber-300 space-y-4 animate-fade-in">
               <div className="flex items-center justify-between border-b border-amber-200 pb-2">
                 <span className="text-xs font-bold text-[#D97706] uppercase tracking-wider flex items-center gap-1.5">
@@ -966,7 +993,7 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
             </div>
           )}
 
-          {hasTajwid && (
+          {hasTajwid && isHadir && (
             <div className="p-4 rounded-xl border bg-purple-50/50 border-purple-300 space-y-4 animate-fade-in">
               <div className="flex items-center justify-between border-b border-purple-200 pb-2">
                 <span className="text-xs font-bold text-purple-900 uppercase tracking-wider flex items-center gap-1.5">
