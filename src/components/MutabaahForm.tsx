@@ -279,8 +279,12 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
       return;
     }
 
-    // Validation 5: Scores if filled must be between 0 and 100
-    if (hasTahsin && tahsinNilai !== '') {
+    // Validation 5: Scores are REQUIRED and must be between 0 and 100
+    if (hasTahsin) {
+      if (tahsinNilai === '') {
+        onError("Nilai Tahsin wajib diisi.");
+        return;
+      }
       const val = Number(tahsinNilai);
       if (isNaN(val) || val < 0 || val > 100) {
         onError("Nilai Tahsin harus berupa angka 0 - 100.");
@@ -288,7 +292,11 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
       }
     }
 
-    if (hasTahfidh && tahfidhNilai !== '') {
+    if (hasTahfidh) {
+      if (tahfidhNilai === '') {
+        onError("Nilai Tahfidh wajib diisi.");
+        return;
+      }
       const val = Number(tahfidhNilai);
       if (isNaN(val) || val < 0 || val > 100) {
         onError("Nilai Tahfidh harus berupa angka 0 - 100.");
@@ -296,7 +304,11 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
       }
     }
 
-    if (hasTajwid && tajwidNilai !== '') {
+    if (hasTajwid) {
+      if (tajwidNilai === '') {
+        onError("Nilai Tajwid wajib diisi.");
+        return;
+      }
       const val = Number(tajwidNilai);
       if (isNaN(val) || val < 0 || val > 100) {
         onError("Nilai Tajwid harus berupa angka 0 - 100.");
@@ -753,7 +765,7 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nilai Tahsin (Integer 0 - 100)
+                  Nilai Tahsin (0 - 100)
                 </label>
                 <input
                   type="number"
@@ -890,7 +902,7 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nilai Tahfidh (Integer 0 - 100)
+                  Nilai Tahfidh (0 - 100)
                 </label>
                 <input
                   type="number"
@@ -947,7 +959,7 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nilai Tajwid (Integer 0 - 100)
+                  Nilai Tajwid (0 - 100)
                 </label>
                 <input
                   type="number"
