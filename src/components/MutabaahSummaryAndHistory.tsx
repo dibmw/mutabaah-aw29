@@ -50,7 +50,7 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
             </h3>
           </div>
           <span className="text-xs text-blue-200 font-medium">
-            Diurutkan dari Timestamp Terbaru
+            Diurutkan dari Tanggal Mutabaah Terbaru
           </span>
         </div>
 

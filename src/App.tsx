@@ -93,7 +93,11 @@ export default function App() {
       const nisSet = new Set(selectedSiswaList.map(s => s.ID_Siswa));
       const allLogs = MutabaahService.getLogs();
       const filtered = allLogs.filter(l => nisSet.has(l.ID_Siswa));
-      filtered.sort((a, b) => new Date(b.Timestamp).getTime() - new Date(a.Timestamp).getTime());
+      filtered.sort((a, b) => {
+        const dateCmp = String(b.Tanggal_Mutabaah || '').localeCompare(String(a.Tanggal_Mutabaah || ''));
+        if (dateCmp !== 0) return dateCmp;
+        return String(b.Timestamp || '').localeCompare(String(a.Timestamp || ''));
+      });
       setRecentLogs(filtered.slice(0, 20));
 
       const totalLogs = filtered.length;

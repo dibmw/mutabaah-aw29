@@ -323,7 +323,11 @@ export class MutabaahService {
   static getStudentRecentLogs(nis: string, limit = 20): LogMutabaah[] {
     const logs = this.getLogs();
     const filtered = logs.filter(l => String(l.ID_Siswa).trim() === String(nis).trim());
-    filtered.sort((a, b) => new Date(b.Timestamp).getTime() - new Date(a.Timestamp).getTime());
+    filtered.sort((a, b) => {
+      const dateCmp = String(b.Tanggal_Mutabaah || '').localeCompare(String(a.Tanggal_Mutabaah || ''));
+      if (dateCmp !== 0) return dateCmp;
+      return String(b.Timestamp || '').localeCompare(String(a.Timestamp || ''));
+    });
     return filtered.slice(0, limit);
   }
 
