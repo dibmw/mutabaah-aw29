@@ -17,7 +17,7 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
   const [classFilter, setClassFilter] = useState('ALL');
   const [genderFilter, setGenderFilter] = useState('ALL');
   const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
 
   // Extract unique classes for filter, respecting gender filter
   const classes = Array.from(
@@ -43,15 +43,24 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
     }
   }, [genderFilter, classes, classFilter]);
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking outside the search input/dropdown area, or on Escape
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
         setIsOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   // Filter students by Search Term (Name, NIS, Class, Halaqah), Class Filter, and Gender Filter
@@ -108,20 +117,20 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
     setSearchTerm('');
   };
 
-  // Format search input text display
-  const getInputValue = () => {
+  // Build placeholder that reflects current selection summary
+  const getPlaceholder = () => {
     if (selectedSiswaList.length === 1) {
       const s = selectedSiswaList[0];
-      return `${s.Nama_Siswa} - ${s.Kelas} - NIS: ${s.ID_Siswa}`;
+      return `${s.Nama_Siswa} - ${s.Kelas} - NIS: ${s.ID_Siswa} (ketik untuk ganti/cari)`;
     }
     if (selectedSiswaList.length > 1) {
-      return `${selectedSiswaList.length} Siswa Terpilih ${classFilter !== 'ALL' ? `(Kelas ${classFilter})` : ''}`;
+      return `Ketik Nama, NIS, atau Kelas untuk cari & tambah siswa...`;
     }
-    return searchTerm;
+    return 'Ketik Nama, NIS, atau Kelas...';
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-3.5 sm:p-5 mb-4 sm:mb-6" ref={containerRef}>
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-3.5 sm:p-5 mb-4 sm:mb-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         
         {/* Title */}
@@ -202,21 +211,22 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
       </div>
 
       {/* Autocomplete Search Input */}
-      <div className="mt-3 sm:mt-4 relative">
+      <div className="mt-3 sm:mt-4 relative" ref={searchRef}>
         <div className="relative">
           <input
             type="text"
-            value={getInputValue()}
+            value={searchTerm}
             onFocus={() => setIsOpen(true)}
             onChange={(e) => {
               setSearchTerm(e.target.value);
               setIsOpen(true);
             }}
-            placeholder="Ketik Nama, NIS, atau Kelas..."
-            className={`w-full pl-10 pr-20 py-3 text-base sm:text-sm font-semibold rounded-xl border transition-all min-h-[44px] ${
+            placeholder={getPlaceholder()}
+            autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
+            className={`w-full pl-10 py-3 text-base sm:text-sm font-semibold rounded-xl border transition-all min-h-[44px] ${
               selectedSiswaList.length > 0
-                ? 'bg-blue-50/80 border-[#1E3A8A] text-[#1E3A8A] shadow-xs'
-                : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-[#1E3A8A] focus:ring-2 focus:ring-blue-100'
+                ? 'bg-blue-50/80 border-[#1E3A8A] text-[#1E3A8A] shadow-xs pr-28'
+                : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-[#1E3A8A] focus:ring-2 focus:ring-blue-100 pr-16'
             }`}
           />
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -229,11 +239,16 @@ export const StudentSearch: React.FC<StudentSearchProps> = ({
 
           <div className="absolute inset-y-0 right-0 pr-2 flex items-center gap-1">
             {selectedSiswaList.length > 0 && (
+              <span className="text-[10px] font-extrabold text-[#1E3A8A] bg-blue-100 px-2 py-0.5 rounded-full shrink-0">
+                {selectedSiswaList.length} Terpilih
+              </span>
+            )}
+            {searchTerm && (
               <button
                 type="button"
-                onClick={handleClearAll}
+                onClick={() => { setSearchTerm(''); setIsOpen(true); }}
                 className="p-2 text-slate-400 hover:text-rose-600 rounded-lg transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center"
-                title="Hapus semua pilihan siswa"
+                title="Hapus kata kunci pencarian"
               >
                 <X className="w-4 h-4" />
               </button>
