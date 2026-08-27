@@ -98,7 +98,16 @@ export default function App() {
         if (dateCmp !== 0) return dateCmp;
         return String(b.Timestamp || '').localeCompare(String(a.Timestamp || ''));
       });
-      setRecentLogs(filtered.slice(0, 20));
+
+      const latestPerStudent = selectedSiswaList
+        .map(s => MutabaahService.getStudentRecentLogs(s.ID_Siswa, 1)[0])
+        .filter((l): l is LogMutabaah => Boolean(l));
+      latestPerStudent.sort((a, b) => {
+        const dateCmp = String(b.Tanggal_Mutabaah || '').localeCompare(String(a.Tanggal_Mutabaah || ''));
+        if (dateCmp !== 0) return dateCmp;
+        return String(b.Timestamp || '').localeCompare(String(a.Timestamp || ''));
+      });
+      setRecentLogs(latestPerStudent);
 
       const totalLogs = filtered.length;
       const presentCount = filtered.filter(l => l.Kehadiran === 'A' || (l.Kehadiran as string) === 'Hadir').length;

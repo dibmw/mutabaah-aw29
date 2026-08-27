@@ -79,6 +79,7 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-200 text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
+                  {isMulti && <th className="py-3 px-3.5 whitespace-nowrap">Nama Siswa</th>}
                   <th className="py-3 px-3.5 whitespace-nowrap">Tanggal</th>
                   <th className="py-3 px-3.5 whitespace-nowrap">Guru Penginput</th>
                   <th className="py-3 px-3.5 whitespace-nowrap text-center">Kehadiran</th>
@@ -102,6 +103,13 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
                   return (
                     <tr key={log.ID_Log} className="hover:bg-slate-50/80 transition-colors">
                       
+                      {/* Nama Siswa (hanya saat multi) */}
+                      {isMulti && (
+                        <td className="py-3 px-3.5 font-bold whitespace-nowrap text-slate-900">
+                          {log.Nama_Siswa}
+                        </td>
+                      )}
+
                       {/* Tanggal */}
                       <td className="py-3 px-3.5 font-bold whitespace-nowrap">
                         <div className="flex items-center gap-1.5 text-slate-900">
