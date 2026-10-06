@@ -1,6 +1,6 @@
 import React from 'react';
 import { MasterUser } from '../types';
-import { LogOut, LogIn, RefreshCw, Share2 } from 'lucide-react';
+import { LogOut, LogIn, RefreshCw, Share2, BellRing } from 'lucide-react';
 
 interface HeaderProps {
   currentUser: MasterUser | null;
@@ -9,6 +9,7 @@ interface HeaderProps {
   onSync: () => void;
   isSyncing: boolean;
   onOpenReportWA: () => void;
+  onOpenBroadcast?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -17,8 +18,10 @@ export const Header: React.FC<HeaderProps> = ({
   onLogin,
   onSync,
   isSyncing,
-  onOpenReportWA
+  onOpenReportWA,
+  onOpenBroadcast
 }) => {
+  const isKurikulum = currentUser?.Email?.trim().toLowerCase() === 'kurikulum.alwildan29@gmail.com';
   return (
     <header className="bg-white text-slate-800 shadow-sm border-b border-slate-200 sticky top-0 z-30">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
@@ -72,6 +75,18 @@ export const Header: React.FC<HeaderProps> = ({
               <Share2 className="w-3.5 h-3.5 text-emerald-100" />
               <span>Report WA</span>
             </button>
+
+            {/* Broadcast Reminder — khusus kurikulum */}
+            {isKurikulum && onOpenBroadcast && (
+              <button
+                onClick={onOpenBroadcast}
+                title="Broadcast reminder pengisian mutabaah ke guru pengampu"
+                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 active:scale-95 text-white rounded-xl shadow-xs transition-all border border-amber-400 min-h-[38px]"
+              >
+                <BellRing className="w-3.5 h-3.5 text-white" />
+                <span>Reminder</span>
+              </button>
+            )}
           </div>
 
           {/* Profile Chip Guru */}

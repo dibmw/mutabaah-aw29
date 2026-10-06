@@ -10,6 +10,17 @@ export interface MasterSiswa {
   Kelas: string;
   Kelompok_Halaqah: string;
   Gender: string;
+  Guru?: string; // Nama guru pengampu (kolom Guru di Master_Siswa)
+  Gender_Guru?: string; // L / P (kolom Gender_Guru di Master_Siswa) untuk sapaan Ust./Ustz.
+}
+
+export interface JadwalPelajaran {
+  Hari: string;
+  Waktu_Mulai: string;
+  Waktu_Selesai: string;
+  ID_Kelas: string;
+  Mapel: string;
+  Guru: string; // bisa berisi >1 guru, mis. "PUTRA RIZKIANSYAH & ANGGA PURNAMA"
 }
 
 export interface MasterSurat {

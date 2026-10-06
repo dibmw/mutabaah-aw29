@@ -357,8 +357,9 @@ export const MasterDataModal: React.FC<MasterDataModalProps> = ({
                 </p>
                 <ul className="list-disc list-inside space-y-1 text-slate-600 font-medium pl-2">
                   <li><strong className="text-slate-800">Master_User</strong> (ID_User, Email, Nama_Guru)</li>
-                  <li><strong className="text-slate-800">Master_Siswa</strong> (ID_Siswa [NIS], Nama_Siswa, Kelas, Gender)</li>
+                  <li><strong className="text-slate-800">Master_Siswa</strong> (ID_Siswa [NIS], Nama_Siswa, Kelas, Gender, Guru, Gender_Guru [L/P])</li>
                   <li><strong className="text-slate-800">Master_Surat</strong> (No_Surat, Nama_Surat, Jumlah_Ayat)</li>
+                  <li><strong className="text-slate-800">Jadwal_Pelajaran</strong> (Hari, Waktu_Mulai, Waktu_Selesai, ID_Kelas, Mapel, Guru — 1 sel Guru bisa berisi &gt;1 nama mis. "A & B")</li>
                   <li><strong className="text-slate-800">Log_Mutabaah</strong> (ID_Log, Timestamp, Tanggal_Mutabaah, Email_Guru, Nama_Guru, ID_Siswa [NIS], Nama_Siswa, Kehadiran, Tahsin_Rujukan, Tahsin_Capaian_SuratBab, Tahsin_Capaian_Detail, Tahsin_Nilai, Tahfidh_Jenis, Tahfidh_Surat, Tahfidh_Ayat, Tahfidh_Nilai, Tajwid_Jenis, Tajwid_Capaian, Tajwid_Nilai, Catatan)</li>
                 </ul>
               </div>

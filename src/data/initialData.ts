@@ -29,28 +29,36 @@ export const INITIAL_SISWA: MasterSiswa[] = [
     Nama_Siswa: "Ahmad Fauzan",
     Kelas: "Kelas 7A",
     Kelompok_Halaqah: "Halaqah Abu Bakar",
-    Gender: "Laki-laki"
+    Gender: "Laki-laki",
+    Guru: "Putra Rizkiansyah",
+    Gender_Guru: "L"
   },
   {
     ID_Siswa: "12345679",
     Nama_Siswa: "Muhammad Rayhan Al-Fatih",
     Kelas: "Kelas 7A",
     Kelompok_Halaqah: "Halaqah Abu Bakar",
-    Gender: "Laki-laki"
+    Gender: "Laki-laki",
+    Guru: "Putra Rizkiansyah",
+    Gender_Guru: "L"
   },
   {
     ID_Siswa: "12345680",
     Nama_Siswa: "Ibrahim Hafiz",
     Kelas: "Kelas 7B",
     Kelompok_Halaqah: "Halaqah Umar bin Khattab",
-    Gender: "Laki-laki"
+    Gender: "Laki-laki",
+    Guru: "Angga Purnama",
+    Gender_Guru: "L"
   },
   {
     ID_Siswa: "12345681",
     Nama_Siswa: "Aisyah Humaira",
     Kelas: "Kelas 8A",
     Kelompok_Halaqah: "Halaqah Utsman bin Affan",
-    Gender: "Perempuan"
+    Gender: "Perempuan",
+    Guru: "Fatimah Azzahra",
+    Gender_Guru: "P"
   },
   {
     ID_Siswa: "12345682",

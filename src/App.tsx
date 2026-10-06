@@ -7,6 +7,7 @@ import { StudentSearch } from './components/StudentSearch';
 import { MutabaahForm } from './components/MutabaahForm';
 import { MutabaahSummaryAndHistory } from './components/MutabaahSummaryAndHistory';
 import { DailyReportModal } from './components/DailyReportModal';
+import { BroadcastReminderModal } from './components/BroadcastReminderModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 
@@ -35,6 +36,7 @@ export default function App() {
   // UI Modals & Notifications
   const [isSyncing, setIsSyncing] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isBroadcastOpen, setIsBroadcastOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Edit & Delete Log State
@@ -310,6 +312,7 @@ export default function App() {
         onSync={handleSyncSheets}
         isSyncing={isSyncing}
         onOpenReportWA={() => setIsReportModalOpen(true)}
+        onOpenBroadcast={() => setIsBroadcastOpen(true)}
       />
 
       {/* Main Container */}
@@ -378,6 +381,14 @@ export default function App() {
         onClose={() => setIsReportModalOpen(false)}
         currentUser={currentUser}
         siswaList={siswaList}
+        onToast={addToast}
+      />
+
+      {/* Broadcast Reminder Modal (khusus kurikulum) */}
+      <BroadcastReminderModal
+        isOpen={isBroadcastOpen}
+        onClose={() => setIsBroadcastOpen(false)}
+        currentUser={currentUser}
         onToast={addToast}
       />
 

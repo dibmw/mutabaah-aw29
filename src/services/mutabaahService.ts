@@ -1,4 +1,4 @@
-import { MasterUser, MasterSiswa, MasterSurat, LogMutabaah, MutabaahFormData, StudentSummary, PendingAction } from '../types';
+import { MasterUser, MasterSiswa, MasterSurat, LogMutabaah, MutabaahFormData, StudentSummary, PendingAction, JadwalPelajaran } from '../types';
 import { INITIAL_USERS, INITIAL_SISWA, INITIAL_LOGS } from '../data/initialData';
 import { MASTER_SURAT } from '../data/masterSurat';
 
@@ -15,7 +15,8 @@ const STORAGE_KEYS = {
   LOGS: 'mutabaah_logs_v1',
   CURRENT_USER: 'mutabaah_current_user_v1',
   WEBHOOK_URL: 'mutabaah_google_script_url_v1',
-  PENDING_LOGS: 'mutabaah_pending_logs_v1'
+  PENDING_LOGS: 'mutabaah_pending_logs_v1',
+  JADWAL: 'mutabaah_jadwal_pelajaran_v1'
 };
 
 // Helper to parse gviz JSON export (tqx=out:json) into rows (string[][]).
@@ -284,6 +285,192 @@ export class MutabaahService {
     } catch {
       return MASTER_SURAT;
     }
+  }
+
+  // ============ BROADCAST REMINDER (Kurikulum only) ============
+  static getJadwal(): JadwalPelajaran[] {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.JADWAL);
+      if (!stored) return [];
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Pecah sel Guru jadwal yang bisa berisi >1 nama, mis. "PUTRA RIZKIANSYAH & ANGGA PURNAMA" */
+  static splitGuruCell(cell: string): string[] {
+    if (!cell) return [];
+    return cell
+      .split(/\s*[&/,;+|\n]+\s*|\s+dan\s+/i)
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
+
+  static normalizeNameKey(name: string): string {
+    return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  /** Mapel Al-Qur'an: tahan varian "AL-QUR'AN / Al Qur'an / ALQURAN" */
+  static isMapelQuran(mapel: string): boolean {
+    const norm = (mapel || '').toUpperCase().replace(/[\s'\-`_]/g, '');
+    return norm.includes('ALQURAN') || norm.includes('QURAN');
+  }
+
+  static normalizeHari(hari: string): string {
+    return (hari || '').trim().toUpperCase();
+  }
+
+  static getHariIndonesia(dateStr: string): string {
+    try {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      const hari = dt.toLocaleDateString('id-ID', { weekday: 'long' });
+      return this.normalizeHari(hari);
+    } catch {
+      return '';
+    }
+  }
+
+  static formatTanggalIndonesia(dateStr: string): string {
+    try {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      return dt.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  }
+
+  /** Sapaan berdasarkan Gender_Guru (L/P): L → Ust., P → Ustz. */
+  static getGuruTitle(genderGuru?: string): string {
+    const g = (genderGuru || '').trim().toUpperCase();
+    if (g === 'L' || g === 'LAKI-LAKI' || g === 'LAKI LAKI' || g === 'IKHWAN') return 'Ust.';
+    if (g === 'P' || g === 'PEREMPUAN' || g === 'AKHWAT') return 'Ustz.';
+    return '';
+  }
+
+  static isKurikulumAccount(email?: string): boolean {
+    return (email || '').trim().toLowerCase() === 'kurikulum.alwildan29@gmail.com';
+  }
+
+  static getBroadcastStatus(tanggal: string, onlyPiket = true): Array<{
+    guruKey: string;
+    namaGuru: string;
+    genderGuru: string;
+    totalSiswa: number;
+    sudahIsi: number;
+    belumList: MasterSiswa[];
+    sudahList: MasterSiswa[];
+    jadwalHariIni: JadwalPelajaran[];
+    isPiket: boolean;
+  }> {
+    const hari = this.getHariIndonesia(tanggal);
+    const jadwal = this.getJadwal();
+    const siswaList = this.getSiswa();
+    const logs = this.getLogs();
+
+    // 1. Guru piket Al-Qur'an hari itu (dari Jadwal)
+    const piketMap = new Map<string, { display: string; rows: JadwalPelajaran[] }>();
+    for (const row of jadwal) {
+      if (this.normalizeHari(row.Hari) !== hari) continue;
+      if (!this.isMapelQuran(row.Mapel)) continue;
+      for (const nama of this.splitGuruCell(row.Guru)) {
+        const key = this.normalizeNameKey(nama);
+        if (!key) continue;
+        const existing = piketMap.get(key);
+        if (existing) {
+          existing.rows.push(row);
+        } else {
+          piketMap.set(key, { display: nama.trim(), rows: [row] });
+        }
+      }
+    }
+
+    // 2. Kelompokkan siswa by Guru plot (Master_Siswa.Guru), cek ≥1 log di tanggal tsb
+    const filledIds = new Set(
+      logs.filter(l => l.Tanggal_Mutabaah === tanggal && l.ID_Siswa).map(l => String(l.ID_Siswa).trim())
+    );
+    const byGuru = new Map<string, { display: string; gender: string; siswa: MasterSiswa[] }>();
+    const tanpaPlot: MasterSiswa[] = [];
+    for (const s of siswaList) {
+      const gRaw = (s.Guru || '').trim();
+      if (!gRaw) {
+        tanpaPlot.push(s);
+        continue;
+      }
+      const key = this.normalizeNameKey(gRaw);
+      const existing = byGuru.get(key);
+      if (existing) {
+        existing.siswa.push(s);
+        if (!existing.gender && s.Gender_Guru) existing.gender = s.Gender_Guru;
+      } else {
+        byGuru.set(key, { display: gRaw, siswa: [s], gender: s.Gender_Guru || '' });
+      }
+    }
+
+    // 3. Susun status per guru
+    const result: ReturnType<typeof this.getBroadcastStatus> = [];
+    for (const [key, group] of byGuru) {
+      const piket = piketMap.get(key);
+      const isPiket = Boolean(piket);
+      if (onlyPiket && !isPiket) continue;
+      const belumList = group.siswa.filter(s => !filledIds.has(String(s.ID_Siswa).trim()));
+      const sudahList = group.siswa.filter(s => filledIds.has(String(s.ID_Siswa).trim()));
+      belumList.sort((a, b) => a.Nama_Siswa.localeCompare(b.Nama_Siswa, 'id'));
+      result.push({
+        guruKey: key,
+        namaGuru: piket?.display || group.display,
+        genderGuru: group.gender,
+        totalSiswa: group.siswa.length,
+        sudahIsi: sudahList.length,
+        belumList,
+        sudahList,
+        jadwalHariIni: piket?.rows || [],
+        isPiket
+      });
+    }
+    // Guru piket tapi tidak punya plot siswa → tampil informatif (0 siswa)
+    for (const [key, piket] of piketMap) {
+      if (byGuru.has(key)) continue;
+      if (!onlyPiket) continue;
+      result.push({
+        guruKey: key,
+        namaGuru: piket.display,
+        genderGuru: '',
+        totalSiswa: 0,
+        sudahIsi: 0,
+        belumList: [],
+        sudahList: [],
+        jadwalHariIni: piket.rows,
+        isPiket: true
+      });
+    }
+    if (tanpaPlot.length > 0) {
+      tanpaPlot.sort((a, b) => a.Nama_Siswa.localeCompare(b.Nama_Siswa, 'id'));
+      result.push({
+        guruKey: '__tanpa_plot__',
+        namaGuru: 'Tanpa Plot Guru',
+        genderGuru: '',
+        totalSiswa: tanpaPlot.length,
+        sudahIsi: tanpaPlot.filter(s => filledIds.has(String(s.ID_Siswa).trim())).length,
+        belumList: tanpaPlot.filter(s => !filledIds.has(String(s.ID_Siswa).trim())),
+        sudahList: tanpaPlot.filter(s => filledIds.has(String(s.ID_Siswa).trim())),
+        jadwalHariIni: [],
+        isPiket: false
+      });
+    }
+    // Belum lengkap dulu, lalu lengkap; abjad sebagai tiebreaker
+    result.sort((a, b) => {
+      const aDone = a.totalSiswa > 0 && a.belumList.length === 0 ? 1 : 0;
+      const bDone = b.totalSiswa > 0 && b.belumList.length === 0 ? 1 : 0;
+      if (aDone !== bDone) return aDone - bDone;
+      if (a.guruKey === '__tanpa_plot__') return 1;
+      if (b.guruKey === '__tanpa_plot__') return -1;
+      return a.namaGuru.localeCompare(b.namaGuru, 'id');
+    });
+    return result;
   }
 
   static getLogs(): LogMutabaah[] {
@@ -690,7 +877,7 @@ export class MutabaahService {
   // Fetch live data from public Google Sheet CSV with dynamic column parsing
   static async fetchFromGoogleSheets(): Promise<{ success: boolean; message: string }> {
     try {
-      const sheets = ['Master_User', 'Master_Siswa', 'Master_Surat', 'Log_Mutabaah'];
+      const sheets = ['Master_User', 'Master_Siswa', 'Master_Surat', 'Log_Mutabaah', 'Jadwal_Pelajaran'];
       let fetchedAny = false;
       let htmlDetected = false;
 
@@ -753,16 +940,44 @@ export class MutabaahService {
 
               // --- PARSING SHEET: Master_Siswa ---
               } else if (sheetName === 'Master_Siswa') {
+                const headers = rows[0].map(h => h.toLowerCase().trim());
+                // Deteksi indeks kolom dinamis agar tahan beda urutan/kapitalisasi header.
+                // Kolom baru: Guru (nama pengampu) & Gender_Guru (L/P).
+                const findIdx = (keys: string[], exclude?: string[]): number => {
+                  const idx = headers.findIndex(h =>
+                    keys.some(k => h.includes(k)) && !(exclude || []).some(x => h.includes(x))
+                  );
+                  return idx;
+                };
+                let nisIdx = findIdx(['nis', 'id_siswa', 'id siswa']);
+                let namaIdx = findIdx(['nama_siswa', 'nama siswa', 'nama']);
+                let kelasIdx = findIdx(['kelas', 'id_kelas', 'id kelas']);
+                let genderIdx = findIdx(['gender', 'jenis kelamin', 'jk'], ['guru']);
+                let guruIdx = findIdx(['guru'], ['gender']);
+                let genderGuruIdx = headers.findIndex(h => h.includes('gender') && h.includes('guru'));
+                if (genderGuruIdx === -1) genderGuruIdx = headers.findIndex(h =>
+                  (h.includes('jk') && h.includes('guru')) || h === 'l/p' || h === 'l-p'
+                );
+                if (nisIdx === -1) nisIdx = 0;
+                if (namaIdx === -1) namaIdx = 1;
+                if (kelasIdx === -1) kelasIdx = 2;
+                if (genderIdx === -1) genderIdx = 3;
+                if (guruIdx === -1) guruIdx = 4;
+                if (genderGuruIdx === -1) genderGuruIdx = 5;
+
                 const siswaList: MasterSiswa[] = [];
                 for (let i = 1; i < rows.length; i++) {
                   const cols = rows[i];
-                  if (cols.length >= 2 && cols[0]) {
+                  const maxIdx = Math.max(nisIdx, namaIdx);
+                  if (cols.length > maxIdx && cols[nisIdx]) {
                     siswaList.push({
-                      ID_Siswa: cols[0].trim(),
-                      Nama_Siswa: cols[1].trim(),
-                      Kelas: cols[2] ? cols[2].trim() : "Kelas 1",
+                      ID_Siswa: cols[nisIdx].trim(),
+                      Nama_Siswa: (cols[namaIdx] || '').trim(),
+                      Kelas: cols[kelasIdx] ? cols[kelasIdx].trim() : "Kelas 1",
                       Kelompok_Halaqah: "",
-                      Gender: cols[3] ? cols[3].trim() : ""
+                      Gender: cols[genderIdx] ? cols[genderIdx].trim() : "",
+                      Guru: cols[guruIdx] ? cols[guruIdx].trim() : "",
+                      Gender_Guru: cols[genderGuruIdx] ? cols[genderGuruIdx].trim().toUpperCase() : ""
                     });
                   }
                 }
@@ -820,6 +1035,44 @@ export class MutabaahService {
                   timestamp: l.Timestamp
                 }));
                 this.savePendingActions(orphanActions);
+              // --- PARSING SHEET: Jadwal_Pelajaran ---
+              } else if (sheetName === 'Jadwal_Pelajaran') {
+                const headers = rows[0].map(h => h.toLowerCase().trim());
+                const hIdx = (keys: string[]): number => {
+                  const idx = headers.findIndex(h => keys.some(k => h.includes(k)));
+                  return idx;
+                };
+                let hariIdx = hIdx(['hari']);
+                let mulaiIdx = hIdx(['waktu_mulai', 'waktu mulai', 'mulai', 'jam_mulai', 'jam mulai']);
+                let selesaiIdx = hIdx(['waktu_selesai', 'waktu selesai', 'selesai', 'jam_selesai', 'jam selesai']);
+                let kelasIdx = hIdx(['id_kelas', 'id kelas', 'kelas']);
+                let mapelIdx = hIdx(['mapel', 'pelajaran', 'mata pelajaran', 'maple']);
+                let guruIdx = headers.findIndex(h => h.includes('guru') && !h.includes('gender'));
+                if (hariIdx === -1) hariIdx = 0;
+                if (mulaiIdx === -1) mulaiIdx = 1;
+                if (selesaiIdx === -1) selesaiIdx = 2;
+                if (kelasIdx === -1) kelasIdx = 3;
+                if (mapelIdx === -1) mapelIdx = 4;
+                if (guruIdx === -1) guruIdx = 5;
+
+                const jadwal: JadwalPelajaran[] = [];
+                for (let i = 1; i < rows.length; i++) {
+                  const cols = rows[i];
+                  const hari = cols[hariIdx] ? cols[hariIdx].trim() : '';
+                  const mapel = cols[mapelIdx] ? cols[mapelIdx].trim() : '';
+                  const guru = cols[guruIdx] ? cols[guruIdx].trim() : '';
+                  if (!hari && !mapel && !guru) continue;
+                  jadwal.push({
+                    Hari: hari,
+                    Waktu_Mulai: cols[mulaiIdx] ? cols[mulaiIdx].trim() : '',
+                    Waktu_Selesai: cols[selesaiIdx] ? cols[selesaiIdx].trim() : '',
+                    ID_Kelas: cols[kelasIdx] ? cols[kelasIdx].trim() : '',
+                    Mapel: mapel,
+                    Guru: guru
+                  });
+                }
+                // Simpan walau kosong agar filter piket tahu sheet sudah disinkron
+                localStorage.setItem(STORAGE_KEYS.JADWAL, JSON.stringify(jadwal));
               }
             }
           }
