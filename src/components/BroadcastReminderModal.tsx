@@ -286,9 +286,6 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
                         </span>
                         <span className="text-[11px] text-slate-500 font-medium block">
                           {entry.sudahIsi}/{entry.totalSiswa} siswa sudah isi
-                          {entry.jadwalHariIni.length > 0 && (
-                            <> • {entry.jadwalHariIni.map(j => MutabaahService.formatJadwalLine(j)).filter(Boolean).join(', ')}</>
-                          )}
                         </span>
                       </button>
                       <div className="flex items-center gap-1.5 shrink-0">
