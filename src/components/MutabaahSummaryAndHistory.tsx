@@ -166,15 +166,40 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
                         </td>
                       )}
 
-                      {/* Tanggal */}
+                      {/* Tanggal = Tanggal_Mutabaah (pilihan di form, bisa rapel).
+                          Kecil di bawahnya = waktu submit (Timestamp):
+                          jam polos bila diinput hari-H, label "diinput ..."
+                          bila tanggal submit beda dengan tanggal mutabaah. */}
                       <td className="py-3 px-3.5 font-bold whitespace-nowrap">
                         <div className="flex items-center gap-1.5 text-slate-900">
                           <Calendar className="w-3.5 h-3.5 text-[#D97706]" />
                           {log.Tanggal_Mutabaah}
                         </div>
-                        <span className="text-[10px] text-slate-400 font-normal block mt-0.5">
-                          {log.Timestamp ? log.Timestamp.slice(11, 16) : ''}
-                        </span>
+                        {(() => {
+                          const ts = log.Timestamp || '';
+                          const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(ts);
+                          if (!m) return null;
+                          const [, y, mo, d, hh, mm] = m;
+                          const inputDate = `${y}-${mo}-${d}`;
+                          const time = hh && mm ? `${hh}:${mm}` : '';
+                          if (inputDate === (log.Tanggal_Mutabaah || '')) {
+                            if (!time) return null;
+                            return (
+                              <span className="text-[10px] text-slate-400 font-normal block mt-0.5">
+                                {time}
+                              </span>
+                            );
+                          }
+                          const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+                          const monthLabel = MONTHS[Number(mo) - 1] || mo;
+                          const mutabaahYear = (log.Tanggal_Mutabaah || '').slice(0, 4);
+                          const yearSuffix = mutabaahYear && y !== mutabaahYear ? ` ${y}` : '';
+                          return (
+                            <span className="text-[10px] text-slate-400 font-normal block mt-0.5">
+                              diinput {Number(d)} {monthLabel}{yearSuffix}{time ? ` • ${time}` : ''}
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       {/* Guru Penginput */}
