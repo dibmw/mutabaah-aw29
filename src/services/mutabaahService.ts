@@ -382,6 +382,49 @@ export class MutabaahService {
     return (a.Nama_Siswa || '').localeCompare(b.Nama_Siswa || '', 'id');
   }
 
+  /** Normalisasi ID siswa untuk pencocokan toleran (abaikan spasi & nol depan) */
+  static normalizeIdSiswa(id: string | number | null | undefined): string {
+    const s = String(id ?? '').replace(/\s+/g, '');
+    if (!s) return '';
+    const t = s.replace(/^0+/, '');
+    return t === '' ? s : t;
+  }
+
+  /** Samakan ID siswa secara toleran: exact-trim dulu, lalu versi ternormalisasi */
+  static isSameSiswaId(a: string | number | null | undefined, b: string | number | null | undefined): boolean {
+    const sa = String(a ?? '').trim();
+    const sb = String(b ?? '').trim();
+    if (sa === sb) return true;
+    const na = this.normalizeIdSiswa(sa);
+    const nb = this.normalizeIdSiswa(sb);
+    return na !== '' && na === nb;
+  }
+
+  /** Gabung jadwal yang jamnya sama: "08:00-09:30 | Kelas 7A, Kelas 7B" */
+  static formatJadwalLinesGrouped(rows: JadwalPelajaran[]): string[] {
+    const groups = new Map<string, { jam: string; kelas: string[] }>();
+    for (const j of rows) {
+      const mulai = j.Waktu_Mulai ? this.normalizeTimeHHMM(j.Waktu_Mulai) : '';
+      const selesai = j.Waktu_Selesai ? this.normalizeTimeHHMM(j.Waktu_Selesai) : '';
+      const jam = [mulai, selesai].filter(Boolean).join('-');
+      const kelasRaw = (j.ID_Kelas || '').trim();
+      const kelas = /^kelas\b/i.test(kelasRaw) || !kelasRaw ? kelasRaw : `Kelas ${kelasRaw}`;
+      const key = jam;
+      const existing = groups.get(key);
+      if (existing) {
+        if (kelas && !existing.kelas.includes(kelas)) existing.kelas.push(kelas);
+      } else {
+        groups.set(key, { jam, kelas: kelas ? [kelas] : [] });
+      }
+    }
+    const lines: string[] = [];
+    for (const g of groups.values()) {
+      const kelasSorted = [...g.kelas].sort((a, b) => a.localeCompare(b, 'id', { numeric: true }));
+      lines.push([g.jam, kelasSorted.join(', ')].filter(Boolean).join(' | '));
+    }
+    return lines.filter(Boolean);
+  }
+
   static getBroadcastStatus(tanggal: string, onlyPiket = true): Array<{
     guruKey: string;
     namaGuru: string;
@@ -422,10 +465,12 @@ export class MutabaahService {
       );
     }
 
-    // 2. Kelompokkan siswa by Guru plot (Master_Siswa.Guru), cek ≥1 log di tanggal tsb
-    const filledIds = new Set(
-      logs.filter(l => l.Tanggal_Mutabaah === tanggal && l.ID_Siswa).map(l => String(l.ID_Siswa).trim())
-    );
+    // 2. Kelompokkan siswa by Guru plot (Master_Siswa.Guru), cek ≥1 log di tanggal tsb.
+    // Pencocokan ID toleran (spasi/nol depan) agar beda format tulis tidak menghilangkan data.
+    const filledIdList = logs
+      .filter(l => l.Tanggal_Mutabaah === tanggal && l.ID_Siswa)
+      .map(l => String(l.ID_Siswa).trim());
+    const isFilled = (id: string): boolean => filledIdList.some(f => this.isSameSiswaId(f, id));
     const byGuru = new Map<string, { display: string; gender: string; siswa: MasterSiswa[] }>();
     const tanpaPlot: MasterSiswa[] = [];
     for (const s of siswaList) {
@@ -450,8 +495,8 @@ export class MutabaahService {
       const piket = piketMap.get(key);
       const isPiket = Boolean(piket);
       if (onlyPiket && !isPiket) continue;
-      const belumList = group.siswa.filter(s => !filledIds.has(String(s.ID_Siswa).trim()));
-      const sudahList = group.siswa.filter(s => filledIds.has(String(s.ID_Siswa).trim()));
+      const belumList = group.siswa.filter(s => !isFilled(String(s.ID_Siswa).trim()));
+      const sudahList = group.siswa.filter(s => isFilled(String(s.ID_Siswa).trim()));
       belumList.sort((a, b) => this.compareSiswaByKelasNama(a, b));
       sudahList.sort((a, b) => this.compareSiswaByKelasNama(a, b));
       result.push({
@@ -489,9 +534,9 @@ export class MutabaahService {
         namaGuru: 'Tanpa Plot Guru',
         genderGuru: '',
         totalSiswa: tanpaPlot.length,
-        sudahIsi: tanpaPlot.filter(s => filledIds.has(String(s.ID_Siswa).trim())).length,
-        belumList: tanpaPlot.filter(s => !filledIds.has(String(s.ID_Siswa).trim())),
-        sudahList: tanpaPlot.filter(s => filledIds.has(String(s.ID_Siswa).trim())),
+        sudahIsi: tanpaPlot.filter(s => isFilled(String(s.ID_Siswa).trim())).length,
+        belumList: tanpaPlot.filter(s => !isFilled(String(s.ID_Siswa).trim())),
+        sudahList: tanpaPlot.filter(s => isFilled(String(s.ID_Siswa).trim())),
         jadwalHariIni: [],
         isPiket: false
       });
@@ -544,7 +589,7 @@ export class MutabaahService {
 
   static getStudentRecentLogs(nis: string, limit = 20): LogMutabaah[] {
     const logs = this.getLogs();
-    const filtered = logs.filter(l => String(l.ID_Siswa).trim() === String(nis).trim());
+    const filtered = logs.filter(l => this.isSameSiswaId(l.ID_Siswa, nis));
     filtered.sort((a, b) => {
       const dateCmp = String(b.Tanggal_Mutabaah || '').localeCompare(String(a.Tanggal_Mutabaah || ''));
       if (dateCmp !== 0) return dateCmp;
@@ -554,7 +599,7 @@ export class MutabaahService {
   }
 
   static getStudentSummary(nis: string): StudentSummary {
-    const studentLogs = this.getLogs().filter(l => String(l.ID_Siswa).trim() === String(nis).trim());
+    const studentLogs = this.getLogs().filter(l => this.isSameSiswaId(l.ID_Siswa, nis));
     if (studentLogs.length === 0) {
       return { totalLogs: 0, presentCount: 0, attendancePercentage: 0, avgTahsin: null, avgTahfidh: null, avgTajwid: null };
     }
@@ -1129,6 +1174,60 @@ export class MutabaahService {
     } catch (e) {
       return { success: false, message: "Gagal menyambung ke Google Sheets. Menggunakan database lokal." };
     }
+  }
+
+  /**
+   * Ambil riwayat 1 siswa langsung dari Sheet (tanpa filter retensi 30 hari).
+   * Dipakai on-demand dari Panel B agar riwayat lama tetap bisa dilihat
+   * tanpa mengubah data lokal maupun retensi sync.
+   */
+  static async fetchStudentHistoryFromSheet(nis: string, limit = 20): Promise<LogMutabaah[]> {
+    const cleanNis = String(nis ?? '').trim();
+    if (!cleanNis) return [];
+    const cacheBuster = Date.now();
+    const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent('Log_Mutabaah')}&_t=${cacheBuster}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const jsonText = await res.text();
+    if (jsonText.trim().startsWith('<')) {
+      throw new Error('Akses Google Sheets terbatas (login required).');
+    }
+    const rows = parseGvizJson(jsonText).filter(r => r.some(cell => cell.trim().length > 0));
+    if (rows.length < 1) return [];
+    const logs: LogMutabaah[] = [];
+    for (let i = 1; i < rows.length; i++) {
+      const cols = rows[i];
+      if (!(cols.length >= 1 && (cols[0] || cols[2] || cols[5] || cols[6]))) continue;
+      if (!this.isSameSiswaId(cols[5] || '', cleanNis)) continue;
+      logs.push({
+        ID_Log: cols[0] ? cols[0].trim() : `LOG-SHEET-${i}`,
+        Timestamp: cols[1] ? cols[1].trim() : this.getWIBTimestamp(),
+        Tanggal_Mutabaah: cols[2] ? cols[2].trim() : this.getWIBDateStr(),
+        Email_Guru: cols[3] ? cols[3].trim() : '',
+        Nama_Guru: cols[4] ? cols[4].trim() : '',
+        ID_Siswa: cols[5] ? cols[5].trim() : '',
+        Nama_Siswa: cols[6] ? cols[6].trim() : '',
+        Kehadiran: (cols[7] ? cols[7].trim() : 'Hadir') as any,
+        Tahsin_Rujukan: (cols[8] ? cols[8].trim() : '') as any,
+        Tahsin_Capaian_SuratBab: cols[9] ? cols[9].trim() : '',
+        Tahsin_Capaian_Detail: cols[10] ? cols[10].trim() : '',
+        Tahsin_Nilai: cols[11] && cols[11] !== '' && !isNaN(Number(cols[11])) ? Number(cols[11]) : null,
+        Tahfidh_Jenis: (cols[12] ? cols[12].trim() : '') as any,
+        Tahfidh_Surat: cols[13] ? cols[13].trim() : '',
+        Tahfidh_Ayat: cols[14] ? cols[14].trim() : '',
+        Tahfidh_Nilai: cols[15] && cols[15] !== '' && !isNaN(Number(cols[15])) ? Number(cols[15]) : null,
+        Tajwid_Jenis: (cols[16] ? cols[16].trim() : '') as any,
+        Tajwid_Capaian: cols[17] ? cols[17].trim() : '',
+        Tajwid_Nilai: cols[18] && cols[18] !== '' && !isNaN(Number(cols[18])) ? Number(cols[18]) : null,
+        Catatan: cols[19] ? cols[19].trim() : ''
+      });
+    }
+    logs.sort((a, b) => {
+      const dateCmp = String(b.Tanggal_Mutabaah || '').localeCompare(String(a.Tanggal_Mutabaah || ''));
+      if (dateCmp !== 0) return dateCmp;
+      return String(b.Timestamp || '').localeCompare(String(a.Timestamp || ''));
+    });
+    return logs.slice(0, limit);
   }
 
   static getStorageSizeBytes(): number {

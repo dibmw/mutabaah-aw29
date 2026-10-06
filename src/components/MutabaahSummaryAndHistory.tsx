@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { MasterSiswa, LogMutabaah, StudentSummary, MasterUser } from '../types';
-import { History, FileText, Calendar, User, MessageSquare, Users, Pencil, Trash2 } from 'lucide-react';
+import { MutabaahService } from '../services/mutabaahService';
+import { History, FileText, Calendar, User, MessageSquare, Users, Pencil, Trash2, CloudDownload, RotateCcw } from 'lucide-react';
 
 interface MutabaahSummaryAndHistoryProps {
   selectedSiswaList: MasterSiswa[];
@@ -37,6 +38,31 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
 
   const isMulti = selectedSiswaList.length > 1;
 
+  // Riwayat lengkap on-demand langsung dari Sheet (tanpa batas retensi 30 hari lokal).
+  // Hanya untuk mode 1 siswa agar query ringan.
+  const [sheetLogs, setSheetLogs] = useState<LogMutabaah[] | null>(null);
+  const [isLoadingSheet, setIsLoadingSheet] = useState(false);
+  const singleNis = !isMulti && selectedSiswaList.length === 1 ? selectedSiswaList[0].ID_Siswa : '';
+
+  useEffect(() => {
+    setSheetLogs(null);
+  }, [singleNis]);
+
+  const displayedLogs = sheetLogs ?? logs;
+
+  const handleLoadSheetHistory = async () => {
+    if (!singleNis || isLoadingSheet) return;
+    setIsLoadingSheet(true);
+    try {
+      const full = await MutabaahService.fetchStudentHistoryFromSheet(singleNis, 20);
+      setSheetLogs(full);
+    } catch (e) {
+      console.warn('Muat riwayat dari Sheet gagal:', e);
+    } finally {
+      setIsLoadingSheet(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       
@@ -54,6 +80,36 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
           </span>
         </div>
 
+        {/* Riwayat lengkap dari Sheet (tanpa batas 30 hari) — mode 1 siswa */}
+        {!isMulti && (
+          <div className="px-6 py-2.5 bg-slate-50 border-b border-slate-200/80 flex flex-wrap items-center gap-2">
+            {sheetLogs ? (
+              <>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300 uppercase tracking-wide">
+                  Dari Sheet • {sheetLogs.length} data
+                </span>
+                <button
+                  onClick={() => setSheetLogs(null)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold bg-white hover:bg-slate-100 text-slate-600 rounded-lg border border-slate-300 transition-all active:scale-95"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Kembali ke data lokal
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={handleLoadSheetHistory}
+                disabled={isLoadingSheet}
+                title="Ambil 20 riwayat terakhir langsung dari Google Sheets (termasuk yang lebih tua dari 30 hari)"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold bg-blue-50 hover:bg-blue-100 text-[#1E3A8A] rounded-lg border border-blue-200 transition-all active:scale-95 disabled:opacity-50"
+              >
+                <CloudDownload className={`w-3.5 h-3.5 ${isLoadingSheet ? 'animate-pulse' : ''}`} />
+                {isLoadingSheet ? 'Memuat dari Sheet...' : 'Muat 20 Terakhir dari Sheet'}
+              </button>
+            )}
+          </div>
+        )}
+
         {isMulti && (
           <div className="bg-blue-50/80 px-6 py-3 border-b border-blue-200 text-xs text-[#1E3A8A] flex items-center gap-2 font-bold">
             <Users className="w-4 h-4 text-[#1E3A8A]" />
@@ -63,7 +119,7 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
           </div>
         )}
 
-        {logs.length === 0 ? (
+        {displayedLogs.length === 0 ? (
           /* REQUIREMENT: Empty State exact text */
           <div className="p-10 text-center bg-slate-50">
             <FileText className="w-10 h-10 text-slate-300 mx-auto mb-3" />
@@ -92,7 +148,7 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
-                {logs.map((log) => {
+                {displayedLogs.map((log) => {
                   // Format Tahsin Column
                   const hasTahsinDetail = log.Tahsin_Rujukan || log.Tahsin_Capaian_SuratBab;
                   // Format Tahfidh Column

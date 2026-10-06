@@ -107,8 +107,8 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
     });
     if (entry.jadwalHariIni.length > 0) {
       text += `\n📌 *Jadwal hari ${hariLabel || 'ini'}:*\n`;
-      entry.jadwalHariIni.forEach(j => {
-        text += `• ${MutabaahService.formatJadwalLine(j)}\n`;
+      MutabaahService.formatJadwalLinesGrouped(entry.jadwalHariIni).forEach(line => {
+        text += `• ${line}\n`;
       });
     }
     text += `\nSyukran, jazaakumullahu khairan atas perhatian dan kerjasamanya.\n\n`;
