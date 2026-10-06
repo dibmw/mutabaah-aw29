@@ -81,6 +81,15 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
     return title ? `${title} ${namaGuru}` : namaGuru;
   };
 
+  const hariLabel = useMemo(() => {
+    try {
+      const [y, m, d] = selectedDate.split('-').map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString('id-ID', { weekday: 'long' });
+    } catch {
+      return '';
+    }
+  }, [selectedDate]);
+
   const buildReminderText = (entry: (typeof statusList)[number]): string => {
     const tanggalId = MutabaahService.formatTanggalIndonesia(selectedDate);
     const sapaan = greetingFor(entry.namaGuru, entry.genderGuru);
@@ -94,14 +103,12 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
     text += `📊 *${entry.belumList.length} dari ${entry.totalSiswa} siswa belum terisi*\n\n`;
     text += `*Daftar siswa yang belum ada isian:*\n`;
     entry.belumList.forEach((s, i) => {
-      text += `${i + 1}. ${s.Nama_Siswa} (${s.Kelas} - NIS: ${s.ID_Siswa})\n`;
+      text += `${i + 1}. ${s.Nama_Siswa} - ${s.Kelas}\n`;
     });
     if (entry.jadwalHariIni.length > 0) {
-      text += `\n📌 *Jadwal hari ini:*\n`;
+      text += `\n📌 *Jadwal hari ${hariLabel || 'ini'}:*\n`;
       entry.jadwalHariIni.forEach(j => {
-        const jam = [j.Waktu_Mulai, j.Waktu_Selesai].filter(Boolean).join('-');
-        const parts = [jam, j.ID_Kelas ? `Kelas ${j.ID_Kelas}` : '', j.Mapel].filter(Boolean);
-        text += `• ${parts.join(' | ')}\n`;
+        text += `• ${MutabaahService.formatJadwalLine(j)}\n`;
       });
     }
     text += `\nSyukran, jazaakumullahu khairan atas perhatian dan kerjasamanya.\n\n`;
@@ -265,60 +272,60 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
 
               {filtered.map((entry) => {
                 const isExpanded = expandedKey === entry.guruKey;
-                const preview = buildReminderText(entry);
+                const reminderText = buildReminderText(entry);
+                const isCopied = copiedKey === entry.guruKey;
                 return (
                   <div key={entry.guruKey} className="bg-white rounded-xl border overflow-hidden border-amber-200">
-                    <button
-                      onClick={() => setExpandedKey(isExpanded ? null : entry.guruKey)}
-                      className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-extrabold text-slate-900 truncate">
+                    <div className="w-full px-4 py-3 flex items-center justify-between gap-3">
+                      <button
+                        onClick={() => setExpandedKey(isExpanded ? null : entry.guruKey)}
+                        className="flex-1 min-w-0 text-left hover:bg-slate-50 transition-colors rounded-lg px-1 py-0.5"
+                      >
+                        <span className="text-sm font-extrabold text-slate-900 truncate block">
                           {greetingFor(entry.namaGuru, entry.genderGuru)}
-                        </p>
-                        <p className="text-[11px] text-slate-500 font-medium">
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-medium block">
                           {entry.sudahIsi}/{entry.totalSiswa} siswa sudah isi
                           {entry.jadwalHariIni.length > 0 && (
-                            <> • {entry.jadwalHariIni.map(j => [j.Waktu_Mulai, j.Waktu_Selesai].filter(Boolean).join('-')).filter(Boolean).join(', ') || 'piket'}</>
+                            <> • {entry.jadwalHariIni.map(j => MutabaahService.formatJadwalLine(j)).filter(Boolean).join(', ')}</>
                           )}
-                        </p>
+                        </span>
+                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300 hidden sm:inline-block">⚠️ {entry.belumList.length} BELUM</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); void copyText(reminderText, entry.guruKey, `Reminder untuk ${entry.namaGuru} berhasil dicopy!`); }}
+                          title={`Copy reminder untuk ${entry.namaGuru}`}
+                          className={`p-2 rounded-lg border transition-all active:scale-95 min-w-[34px] min-h-[34px] flex items-center justify-center ${isCopied ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-[#1E3A8A] text-white border-[#F59E0B]/40 hover:bg-blue-900'}`}
+                        >
+                          {isCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4 text-[#F59E0B]" />}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openWhatsApp(reminderText); }}
+                          title={`Buka WhatsApp untuk ${entry.namaGuru}`}
+                          className="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-500 transition-all active:scale-95 min-w-[34px] min-h-[34px] flex items-center justify-center"
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setExpandedKey(isExpanded ? null : entry.guruKey)}
+                          title={isExpanded ? 'Sembunyikan daftar siswa' : 'Tampilkan daftar siswa'}
+                          className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors min-w-[34px] min-h-[34px] flex items-center justify-center"
+                        >
+                          <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        </button>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">⚠️ {entry.belumList.length} BELUM</span>
-                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                      </div>
-                    </button>
+                    </div>
 
                     {isExpanded && (
                       <div className="px-4 pb-4 space-y-3 border-t border-slate-100 pt-3">
                         <ul className="text-xs text-slate-700 font-medium space-y-1">
                           {entry.belumList.map(s => (
-                            <li key={s.ID_Siswa} className="flex items-center justify-between gap-2 bg-amber-50/60 border border-amber-100 rounded-lg px-2.5 py-1.5">
-                              <span className="font-bold truncate">{s.Nama_Siswa}</span>
-                              <span className="text-[10px] text-slate-500 font-bold shrink-0">{s.Kelas} • NIS: {s.ID_Siswa}</span>
+                            <li key={s.ID_Siswa} className="bg-amber-50/60 border border-amber-100 rounded-lg px-2.5 py-1.5 font-bold truncate">
+                              {s.Nama_Siswa} - {s.Kelas}
                             </li>
                           ))}
                         </ul>
-
-                        <div className="bg-slate-900 text-slate-100 p-3 rounded-xl font-mono text-[11px] leading-relaxed whitespace-pre-wrap select-all max-h-[220px] overflow-y-auto">
-                          {preview}
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => copyText(preview, entry.guruKey, `Reminder untuk ${entry.namaGuru} berhasil dicopy!`)}
-                            className={`flex-1 px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 min-h-[42px] ${copiedKey === entry.guruKey ? 'bg-emerald-600 text-white' : 'bg-[#1E3A8A] hover:bg-blue-900 text-white border border-[#F59E0B]/40'}`}
-                          >
-                            {copiedKey === entry.guruKey ? <><Check className="w-4 h-4" /> Tercopy!</> : <><Copy className="w-4 h-4 text-[#F59E0B]" /> Copy Reminder</>}
-                          </button>
-                          <button
-                            onClick={() => openWhatsApp(preview)}
-                            className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 border border-emerald-500 min-h-[42px]"
-                          >
-                            <Send className="w-4 h-4" />
-                            Buka WhatsApp
-                          </button>
-                        </div>
                       </div>
                     )}
                   </div>

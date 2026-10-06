@@ -355,6 +355,33 @@ export class MutabaahService {
     return (email || '').trim().toLowerCase() === 'kurikulum.alwildan29@gmail.com';
   }
 
+  /** Normalisasi jam ke HH:MM (terima "08.00", "8:00", "08:00:00") */
+  static normalizeTimeHHMM(t: string): string {
+    const s = (t || '').trim().replace('.', ':');
+    const m = /^(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?/.exec(s);
+    if (!m) return (t || '').trim();
+    const hh = m[1].padStart(2, '0');
+    const mm = (m[2] ?? '00').padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+
+  /** "08:00-09:30 | Kelas 7A" — mapel tidak ditampilkan */
+  static formatJadwalLine(j: JadwalPelajaran): string {
+    const mulai = j.Waktu_Mulai ? this.normalizeTimeHHMM(j.Waktu_Mulai) : '';
+    const selesai = j.Waktu_Selesai ? this.normalizeTimeHHMM(j.Waktu_Selesai) : '';
+    const jam = [mulai, selesai].filter(Boolean).join('-');
+    const kelasRaw = (j.ID_Kelas || '').trim();
+    const kelas = /^kelas\b/i.test(kelasRaw) || !kelasRaw ? kelasRaw : `Kelas ${kelasRaw}`;
+    return [jam, kelas].filter(Boolean).join(' | ');
+  }
+
+  /** Urutan siswa: Kelas dulu (numeric), lalu Nama */
+  static compareSiswaByKelasNama(a: MasterSiswa, b: MasterSiswa): number {
+    const kelasCmp = (a.Kelas || '').localeCompare(b.Kelas || '', 'id', { numeric: true });
+    if (kelasCmp !== 0) return kelasCmp;
+    return (a.Nama_Siswa || '').localeCompare(b.Nama_Siswa || '', 'id');
+  }
+
   static getBroadcastStatus(tanggal: string, onlyPiket = true): Array<{
     guruKey: string;
     namaGuru: string;
@@ -388,6 +415,13 @@ export class MutabaahService {
       }
     }
 
+    // Sort jadwal tiap guru piket by waktu mulai (ternormalisasi HH:MM)
+    for (const piket of piketMap.values()) {
+      piket.rows.sort((a, b) =>
+        this.normalizeTimeHHMM(a.Waktu_Mulai).localeCompare(this.normalizeTimeHHMM(b.Waktu_Mulai))
+      );
+    }
+
     // 2. Kelompokkan siswa by Guru plot (Master_Siswa.Guru), cek ≥1 log di tanggal tsb
     const filledIds = new Set(
       logs.filter(l => l.Tanggal_Mutabaah === tanggal && l.ID_Siswa).map(l => String(l.ID_Siswa).trim())
@@ -418,7 +452,8 @@ export class MutabaahService {
       if (onlyPiket && !isPiket) continue;
       const belumList = group.siswa.filter(s => !filledIds.has(String(s.ID_Siswa).trim()));
       const sudahList = group.siswa.filter(s => filledIds.has(String(s.ID_Siswa).trim()));
-      belumList.sort((a, b) => a.Nama_Siswa.localeCompare(b.Nama_Siswa, 'id'));
+      belumList.sort((a, b) => this.compareSiswaByKelasNama(a, b));
+      sudahList.sort((a, b) => this.compareSiswaByKelasNama(a, b));
       result.push({
         guruKey: key,
         namaGuru: piket?.display || group.display,
@@ -448,7 +483,7 @@ export class MutabaahService {
       });
     }
     if (tanpaPlot.length > 0) {
-      tanpaPlot.sort((a, b) => a.Nama_Siswa.localeCompare(b.Nama_Siswa, 'id'));
+      tanpaPlot.sort((a, b) => this.compareSiswaByKelasNama(a, b));
       result.push({
         guruKey: '__tanpa_plot__',
         namaGuru: 'Tanpa Plot Guru',
