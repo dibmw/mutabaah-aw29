@@ -442,7 +442,7 @@ export class MutabaahService {
     return lines.filter(Boolean);
   }
 
-  static getBroadcastStatus(tanggal: string, onlyPiket = true): Array<{
+  static getBroadcastStatus(tanggal: string, onlyScheduled = true): Array<{
     guruKey: string;
     namaGuru: string;
     genderGuru: string;
@@ -451,34 +451,43 @@ export class MutabaahService {
     belumList: MasterSiswa[];
     sudahList: MasterSiswa[];
     jadwalHariIni: JadwalPelajaran[];
-    isPiket: boolean;
+    isScheduled: boolean;
   }> {
     const hari = this.getHariIndonesia(tanggal);
     const jadwal = this.getJadwal();
     const siswaList = this.getSiswa();
     const logs = this.getLogs();
 
-    // 1. Guru piket Al-Qur'an hari itu (dari Jadwal)
-    const piketMap = new Map<string, { display: string; rows: JadwalPelajaran[] }>();
+    // 1. Jadwal mengajar (KBM) Al-Qur'an hari itu (dari Jadwal_Pelajaran)
+    const scheduleMap = new Map<string, { display: string; rows: JadwalPelajaran[] }>();
     for (const row of jadwal) {
       if (this.normalizeHari(row.Hari) !== hari) continue;
       if (!this.isMapelQuran(row.Mapel)) continue;
       for (const nama of this.splitGuruCell(row.Guru)) {
         const key = this.normalizeNameKey(nama);
         if (!key) continue;
-        const existing = piketMap.get(key);
+        const existing = scheduleMap.get(key);
         if (existing) {
           existing.rows.push(row);
         } else {
-          piketMap.set(key, { display: nama.trim(), rows: [row] });
+          scheduleMap.set(key, { display: nama.trim(), rows: [row] });
         }
       }
     }
 
-    // Sort jadwal tiap guru piket by waktu mulai (ternormalisasi HH:MM)
-    for (const piket of piketMap.values()) {
-      piket.rows.sort((a, b) =>
+    // Sort jadwal mengajar tiap guru by waktu mulai (ternormalisasi HH:MM)
+    for (const sched of scheduleMap.values()) {
+      sched.rows.sort((a, b) =>
         this.normalizeTimeHHMM(a.Waktu_Mulai).localeCompare(this.normalizeTimeHHMM(b.Waktu_Mulai))
+      );
+    }
+
+    // Himpunan kelas terjadwal per guru hari itu (kunci ternormalisasi)
+    const scheduledClasses = new Map<string, Set<string>>();
+    for (const [key, sched] of scheduleMap) {
+      scheduledClasses.set(
+        key,
+        new Set(sched.rows.map(r => this.normalizeKelasKey(r.ID_Kelas)).filter(Boolean))
       );
     }
 
@@ -506,45 +515,58 @@ export class MutabaahService {
       }
     }
 
-    // 3. Susun status per guru
+    // 3. Susun status per guru.
+    // STRICT: siswa masuk hitungan iff pasangan (guru, kelas)-nya ada di
+    // jadwal KBM hari itu. Kelas yang tidak terjadwal tidak ikut ter-broadcast.
     const result: ReturnType<typeof this.getBroadcastStatus> = [];
     for (const [key, group] of byGuru) {
-      const piket = piketMap.get(key);
-      const isPiket = Boolean(piket);
-      if (onlyPiket && !isPiket) continue;
-      const belumList = group.siswa.filter(s => !isFilled(String(s.ID_Siswa).trim()));
-      const sudahList = group.siswa.filter(s => isFilled(String(s.ID_Siswa).trim()));
+      const sched = scheduleMap.get(key);
+      const isScheduled = Boolean(sched);
+      if (onlyScheduled && !isScheduled) continue;
+      let scoped = group.siswa;
+      if (onlyScheduled) {
+        const kelasSet = scheduledClasses.get(key);
+        if (kelasSet && kelasSet.size > 0) {
+          const inScope = group.siswa.filter(s => kelasSet.has(this.normalizeKelasKey(s.Kelas)));
+          // Fallback mismatch penulisan kelas: bila tak ada yang cocok,
+          // pakai semua agar tidak ada siswa hilang diam-diam.
+          scoped = inScope.length > 0 ? inScope : group.siswa;
+        }
+      }
+      const belumList = scoped.filter(s => !isFilled(String(s.ID_Siswa).trim()));
+      const sudahList = scoped.filter(s => isFilled(String(s.ID_Siswa).trim()));
       belumList.sort((a, b) => this.compareSiswaByKelasNama(a, b));
       sudahList.sort((a, b) => this.compareSiswaByKelasNama(a, b));
       result.push({
         guruKey: key,
-        namaGuru: piket?.display || group.display,
+        namaGuru: sched?.display || group.display,
         genderGuru: group.gender,
-        totalSiswa: group.siswa.length,
+        totalSiswa: scoped.length,
         sudahIsi: sudahList.length,
         belumList,
         sudahList,
-        jadwalHariIni: piket?.rows || [],
-        isPiket
+        jadwalHariIni: sched?.rows || [],
+        isScheduled
       });
     }
-    // Guru piket tapi tidak punya plot siswa → tampil informatif (0 siswa)
-    for (const [key, piket] of piketMap) {
+    // Guru mengajar tapi tidak punya plot siswa → tampil informatif (0 siswa)
+    for (const [key, sched] of scheduleMap) {
       if (byGuru.has(key)) continue;
-      if (!onlyPiket) continue;
+      if (!onlyScheduled) continue;
       result.push({
         guruKey: key,
-        namaGuru: piket.display,
+        namaGuru: sched.display,
         genderGuru: '',
         totalSiswa: 0,
         sudahIsi: 0,
         belumList: [],
         sudahList: [],
-        jadwalHariIni: piket.rows,
-        isPiket: true
+        jadwalHariIni: sched.rows,
+        isScheduled: true
       });
     }
-    if (tanpaPlot.length > 0) {
+    // Tanpa plot guru tidak punya pasangan jadwal → keluar dari mode terjadwal
+    if (tanpaPlot.length > 0 && !onlyScheduled) {
       tanpaPlot.sort((a, b) => this.compareSiswaByKelasNama(a, b));
       result.push({
         guruKey: '__tanpa_plot__',
@@ -555,7 +577,7 @@ export class MutabaahService {
         belumList: tanpaPlot.filter(s => !isFilled(String(s.ID_Siswa).trim())),
         sudahList: tanpaPlot.filter(s => isFilled(String(s.ID_Siswa).trim())),
         jadwalHariIni: [],
-        isPiket: false
+        isScheduled: false
       });
     }
     // Belum lengkap dulu, lalu lengkap; abjad sebagai tiebreaker
@@ -1168,7 +1190,7 @@ export class MutabaahService {
                     Guru: guru
                   });
                 }
-                // Simpan walau kosong agar filter piket tahu sheet sudah disinkron
+                // Simpan walau kosong agar filter jadwal tahu sheet sudah disinkron
                 localStorage.setItem(STORAGE_KEYS.JADWAL, JSON.stringify(jadwal));
               }
             }

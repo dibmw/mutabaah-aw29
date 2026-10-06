@@ -53,11 +53,11 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
   const statusList = useMemo(() => {
     if (!isOpen) return [];
     void refreshKey;
-    // Selalu hanya guru piket Al-Qur'an di hari terpilih (tanpa toggle)
+    // Selalu hanya guru yang mengajar Al-Qur'an di hari terpilih (jadwal KBM, tanpa toggle)
     return MutabaahService.getBroadcastStatus(selectedDate, true);
   }, [isOpen, selectedDate, refreshKey]);
 
-  // List fokus: hanya guru piket yang masih ada belum isi
+  // List fokus: hanya guru yang mengajar dan masih ada belum isi
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const belumOnly = statusList.filter(s => s.totalSiswa > 0 && s.belumList.length > 0);
@@ -134,7 +134,7 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
       text += `\n`;
     }
     if (guruBelum.length === 0) {
-      text += `Semua guru piket sudah lengkap ✅\n\n`;
+      text += `Semua guru yang mengajar hari ini sudah lengkap ✅\n\n`;
     } else {
       text += `Sedangkan guru berikut masih ada yang belum terisi:\n\n`;
       guruBelum.forEach((g, i) => {
@@ -266,7 +266,7 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
               {filtered.length === 0 && (
                 <div className="p-10 text-center bg-white rounded-xl border border-emerald-200">
                   <Check className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
-                  <h4 className="text-sm font-bold text-slate-700">Semua guru piket sudah lengkap ✅</h4>
+                  <h4 className="text-sm font-bold text-slate-700">Semua guru yang mengajar hari ini sudah lengkap ✅</h4>
                   <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">Tidak ada guru yang belum mengisi mutabaah pada tanggal ini. Gunakan Copy Rekap Grup untuk share ke grup Al-Qur'an.</p>
                 </div>
               )}
@@ -324,6 +324,22 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
                             </li>
                           ))}
                         </ul>
+
+                        {/* Sumber jadwal KBM (audit): baris yang memasukkan guru ini ke broadcast */}
+                        {entry.jadwalHariIni.length > 0 && (
+                          <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                              Sumber jadwal KBM{hariLabel ? ` hari ${hariLabel}` : ''} (audit)
+                            </p>
+                            <ul className="text-[11px] text-slate-600 font-medium space-y-0.5">
+                              {entry.jadwalHariIni.map((j, idx) => (
+                                <li key={`${j.ID_Kelas}-${j.Waktu_Mulai}-${idx}`}>
+                                  • {[MutabaahService.formatJadwalLine(j), j.Mapel].filter(Boolean).join(' • ')}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
