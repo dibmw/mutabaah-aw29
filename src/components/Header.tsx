@@ -53,27 +53,27 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Right: Actions & Teacher Profile Chip */}
-        <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 w-full sm:w-auto pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {/* Sync Sheets Button */}
             <button
               onClick={onSync}
               disabled={isSyncing}
               title="Sync data dari Google Sheets"
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl border border-slate-300 transition-all active:scale-95 disabled:opacity-50 min-h-[38px]"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl border border-slate-300 transition-all active:scale-95 disabled:opacity-50 min-h-[38px] min-w-[38px] justify-center"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-[#1E3A8A] ${isSyncing ? 'animate-spin' : ''}`} />
-              <span className="inline">{isSyncing ? 'Sync...' : 'Sync'}</span>
+              <span className="hidden sm:inline">{isSyncing ? 'Sync...' : 'Sync'}</span>
             </button>
 
             {/* Report WA Feature Button */}
             <button
               onClick={onOpenReportWA}
               title="Generate & Copy Laporan Harian WhatsApp Guru"
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl shadow-xs transition-all border border-emerald-500 min-h-[38px]"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl shadow-xs transition-all border border-emerald-500 min-h-[38px] min-w-[38px] justify-center"
             >
               <Share2 className="w-3.5 h-3.5 text-emerald-100" />
-              <span>Report WA</span>
+              <span className="hidden sm:inline">Report WA</span>
             </button>
 
             {/* Broadcast Reminder — khusus kurikulum */}
@@ -81,22 +81,22 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={onOpenBroadcast}
                 title="Broadcast reminder pengisian mutabaah ke guru pengampu"
-                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 active:scale-95 text-white rounded-xl shadow-xs transition-all border border-amber-400 min-h-[38px]"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 active:scale-95 text-white rounded-xl shadow-xs transition-all border border-amber-400 min-h-[38px] min-w-[38px] justify-center"
               >
                 <BellRing className="w-3.5 h-3.5 text-white" />
-                <span>Reminder</span>
+                <span className="hidden sm:inline">Reminder</span>
               </button>
             )}
           </div>
 
           {/* Profile Chip Guru */}
           {currentUser ? (
-            <div className="flex items-center justify-between gap-2.5 bg-slate-50 text-slate-800 pl-3.5 pr-1.5 py-1 rounded-xl border border-slate-200 shadow-2xs min-h-[38px] max-w-[200px] sm:max-w-none transition-all">
+            <div className="flex items-center justify-between gap-2 bg-slate-50 text-slate-800 pl-2.5 sm:pl-3.5 pr-1.5 py-1 rounded-xl border border-slate-200 shadow-2xs min-h-[38px] max-w-[140px] sm:max-w-none transition-all">
               <div className="text-left min-w-0">
                 <span className="text-xs font-bold block text-[#1E3A8A] truncate leading-tight">
                   {currentUser.Nama_Guru}
                 </span>
-                <span className="text-[10px] font-medium text-slate-500 truncate block leading-tight">
+                <span className="hidden sm:block text-[10px] font-medium text-slate-500 truncate leading-tight">
                   {currentUser.Email}
                 </span>
               </div>
@@ -113,10 +113,10 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onLogin}
               title="Klik untuk masuk ke akun guru"
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold bg-[#1E3A8A] hover:bg-blue-900 text-white rounded-xl shadow-2xs transition-all border border-blue-800 active:scale-95 min-h-[38px]"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 text-xs font-bold bg-[#1E3A8A] hover:bg-blue-900 text-white rounded-xl shadow-2xs transition-all border border-blue-800 active:scale-95 min-h-[38px] min-w-[38px] justify-center"
             >
               <LogIn className="w-3.5 h-3.5 text-[#F59E0B]" />
-              <span>Masuk / Login</span>
+              <span className="hidden sm:inline">Masuk / Login</span>
             </button>
           )}
         </div>
