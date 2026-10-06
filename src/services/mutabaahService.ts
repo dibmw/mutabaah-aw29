@@ -400,6 +400,23 @@ export class MutabaahService {
     return na !== '' && na === nb;
   }
 
+  /** Kunci pembanding kelas: "Kelas 7A" ↔ "7A" dianggap sama */
+  static normalizeKelasKey(kelas: string): string {
+    return (kelas || '').trim().toUpperCase().replace(/^KELAS\s+/, '').replace(/\s+/g, '');
+  }
+
+  /**
+   * Saring jadwal hanya untuk kelas yang masih ada siswa belum isi.
+   * Fallback: jika tidak ada yang cocok (beda penulisan kelas), tampilkan semua
+   * agar seksi jadwal tidak hilang kosong.
+   */
+  static filterJadwalBelumTerisi(jadwalHariIni: JadwalPelajaran[], belumList: MasterSiswa[]): JadwalPelajaran[] {
+    if (jadwalHariIni.length === 0 || belumList.length === 0) return jadwalHariIni;
+    const kelasBelum = new Set(belumList.map(s => this.normalizeKelasKey(s.Kelas)).filter(Boolean));
+    const filtered = jadwalHariIni.filter(j => kelasBelum.has(this.normalizeKelasKey(j.ID_Kelas)));
+    return filtered.length > 0 ? filtered : jadwalHariIni;
+  }
+
   /** Gabung jadwal yang jamnya sama: "08:00-09:30 | Kelas 7A, Kelas 7B" */
   static formatJadwalLinesGrouped(rows: JadwalPelajaran[]): string[] {
     const groups = new Map<string, { jam: string; kelas: string[] }>();
