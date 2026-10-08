@@ -1,6 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MasterUser, MasterSiswa, MasterSurat, LogMutabaah, StudentSummary, MutabaahFormData } from './types';
 import { MutabaahService } from './services/mutabaahService';
+import { useAppVersion } from './hooks/useAppVersion';
+import {
+  getJakartaWeekId,
+  getMsUntilNextMondayMidnightWIB,
+  getStoredWeekId,
+  markWeekRefreshed,
+  snoozeWeeklyRefresh,
+  isSnoozed,
+} from './utils/weeklyRefresh';
 import { Header } from './components/Header';
 import { LoginModal } from './components/LoginModal';
 import { StudentSearch } from './components/StudentSearch';
@@ -10,6 +19,7 @@ import { DailyReportModal } from './components/DailyReportModal';
 import { BroadcastReminderModal } from './components/BroadcastReminderModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
+import { UpdateBanner } from './components/UpdateBanner';
 
 export default function App() {
   // Current User Session
@@ -42,6 +52,15 @@ export default function App() {
   // Edit & Delete Log State
   const [editingLog, setEditingLog] = useState<LogMutabaah | null>(null);
   const [deleteTargetLog, setDeleteTargetLog] = useState<LogMutabaah | null>(null);
+
+  // Auto-refresh: cek versi build + refresh mingguan Senin 00:00 WIB
+  const { updateAvailable, dismiss: dismissVersionUpdate, reload: reloadForVersionUpdate } = useAppVersion();
+  const [weeklyNeeded, setWeeklyNeeded] = useState(false);
+  const [weeklyCountdown, setWeeklyCountdown] = useState<number | null>(null);
+  const editingLogRef = useRef(editingLog);
+  editingLogRef.current = editingLog;
+  const isSyncingRef = useRef(isSyncing);
+  isSyncingRef.current = isSyncing;
 
   // Add Toast Notification
   const addToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {
@@ -82,6 +101,82 @@ export default function App() {
     MutabaahService.autoCleanupIfNeeded();
     MutabaahService.retryPendingLogs().catch(() => {});
   }, []);
+
+  // Refresh mingguan: anchor Senin 00:00 WIB (weekId = tanggal Senin pekan berjalan)
+  const isBusyForRefresh = useCallback(() => {
+    if (editingLogRef.current !== null || isSyncingRef.current) return true;
+    try {
+      return MutabaahService.getPendingLogsCount() > 0;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const checkWeeklyRefresh = useCallback(() => {
+    if (isSnoozed()) return;
+    const currentWeek = getJakartaWeekId();
+    const stored = getStoredWeekId();
+    if (stored === null) {
+      // Instalasi pertama: cukup tandai tanpa reload agar tidak reload saat buka perdana
+      markWeekRefreshed(currentWeek);
+      return;
+    }
+    if (stored !== currentWeek) {
+      setWeeklyNeeded(true);
+      setWeeklyCountdown(30);
+    }
+  }, []);
+
+  const handleWeeklyReloadNow = useCallback(() => {
+    markWeekRefreshed(getJakartaWeekId());
+    window.location.reload();
+  }, []);
+
+  const handleWeeklySnooze = useCallback(() => {
+    snoozeWeeklyRefresh(10 * 60 * 1000);
+    setWeeklyNeeded(false);
+    setWeeklyCountdown(null);
+  }, []);
+
+  // Cek saat dibuka + timer ke Senin 00:00 WIB + interval 5 mnt (tab dibiarkan terbuka)
+  useEffect(() => {
+    checkWeeklyRefresh();
+    let timeoutId: number | undefined;
+    const scheduleMidnight = () => {
+      const ms = getMsUntilNextMondayMidnightWIB();
+      timeoutId = window.setTimeout(() => {
+        checkWeeklyRefresh();
+        scheduleMidnight();
+      }, ms);
+    };
+    scheduleMidnight();
+    const intervalId = window.setInterval(checkWeeklyRefresh, 5 * 60 * 1000);
+    return () => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
+    };
+  }, [checkWeeklyRefresh]);
+
+  // Countdown 30 dtk: reload saat idle, tunda otomatis 10 mnt jika guru sedang input/sinkron
+  useEffect(() => {
+    if (!weeklyNeeded || weeklyCountdown === null) return;
+    if (weeklyCountdown <= 0) {
+      if (isBusyForRefresh()) {
+        snoozeWeeklyRefresh(10 * 60 * 1000);
+        setWeeklyNeeded(false);
+        setWeeklyCountdown(null);
+        addToast('info', 'Update mingguan ditunda 10 menit karena ada input/sinkronisasi berjalan.');
+      } else {
+        markWeekRefreshed(getJakartaWeekId());
+        window.location.reload();
+      }
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setWeeklyCountdown((c) => (c === null ? c : c - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [weeklyNeeded, weeklyCountdown, isBusyForRefresh, addToast]);
 
   // Fetch Panel B Data whenever selectedSiswaList changes or when log is added
   const refreshPanelB = useCallback(() => {
@@ -365,6 +460,9 @@ export default function App() {
           </div>
           <p className="text-[11px] text-slate-400 font-medium">
             &copy; 2026. All rights reserved.
+            <span className="ml-2 text-slate-300" title="Build version">
+              v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}
+            </span>
           </p>
         </div>
       </footer>
@@ -402,6 +500,27 @@ export default function App() {
 
       {/* Toast Notification Container */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Banner update mingguan (prioritas) */}
+      {weeklyNeeded && (
+        <UpdateBanner
+          kind="weekly"
+          countdownSec={weeklyCountdown}
+          onReload={handleWeeklyReloadNow}
+          onSnooze={handleWeeklySnooze}
+        />
+      )}
+
+      {/* Banner versi baru (hanya jika tidak ada banner mingguan) */}
+      {!weeklyNeeded && updateAvailable && (
+        <UpdateBanner
+          kind="version"
+          countdownSec={null}
+          onReload={reloadForVersionUpdate}
+          onSnooze={dismissVersionUpdate}
+          onDismiss={dismissVersionUpdate}
+        />
+      )}
 
     </div>
   );
