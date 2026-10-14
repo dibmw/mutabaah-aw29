@@ -8,6 +8,8 @@ interface HeaderProps {
   onLogin: () => void;
   onSync: () => void;
   isSyncing: boolean;
+  pendingCount?: number;
+  isOnline?: boolean;
   onOpenReportWA: () => void;
   onOpenBroadcast?: () => void;
 }
@@ -18,6 +20,8 @@ export const Header: React.FC<HeaderProps> = ({
   onLogin,
   onSync,
   isSyncing,
+  pendingCount = 0,
+  isOnline = true,
   onOpenReportWA,
   onOpenBroadcast
 }) => {
@@ -59,11 +63,23 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onSync}
               disabled={isSyncing}
-              title="Sync data dari Google Sheets"
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl border border-slate-300 transition-all active:scale-95 disabled:opacity-50 min-h-[38px] min-w-[38px] justify-center"
+              title={pendingCount > 0 ? `Sync — ${pendingCount} antri pekan ini` : 'Sync data dari Google Sheets'}
+              className="relative flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl border border-slate-300 transition-all active:scale-95 disabled:opacity-50 min-h-[38px] min-w-[38px] justify-center"
             >
+              <span
+                title={isOnline ? 'Online' : 'Offline'}
+                className={`w-2 h-2 rounded-full shrink-0 ${isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`}
+              />
               <RefreshCw className={`w-3.5 h-3.5 text-[#1E3A8A] ${isSyncing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">{isSyncing ? 'Sync...' : 'Sync'}</span>
+              {pendingCount > 0 && (
+                <span className="text-[10px] font-extrabold bg-amber-400 text-amber-950 px-1.5 py-0.5 rounded-full leading-none">
+                  ⏳{pendingCount}
+                </span>
+              )}
+              {!isOnline && (
+                <span className="hidden sm:inline text-[10px] font-bold text-rose-600">Offline</span>
+              )}
             </button>
 
             {/* Report WA Feature Button */}

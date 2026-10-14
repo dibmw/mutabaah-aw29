@@ -32,6 +32,7 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
   const handleSync = async (showToast = false) => {
     setIsSyncing(true);
     try {
+      MutabaahService.pruneExpiredPendingByWeek();
       await MutabaahService.fetchFromGoogleSheets();
       setRefreshKey(k => k + 1);
       if (showToast) onToast('success', 'Data berhasil disinkronkan dari Google Sheets!');

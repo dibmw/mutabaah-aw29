@@ -80,7 +80,7 @@ function doPost(e) {
       return ContentService.createTextOutput("NOT_FOUND");
     }
 
-    // === ACTION: CREATE (default, existing logic) ===
+    // === ACTION: CREATE (default, idempoten by ID_Log agar retry aman, tidak dobel) ===
     var items = [];
 
     if (data.records && Array.isArray(data.records)) {
@@ -91,8 +91,26 @@ function doPost(e) {
       items = [data];
     }
 
-    var rows = items.map(function(item) {
-      return [
+    // Kumpulkan ID yang sudah ada agar retry / double-klik Sync tidak dobel baris.
+    var existingIds = {};
+    var lastRowForIds = sheet.getLastRow();
+    if (lastRowForIds >= 1) {
+      var idVals = sheet.getRange(1, 1, lastRowForIds, 1).getValues();
+      for (var k = 0; k < idVals.length; k++) {
+        if (idVals[k][0]) existingIds[String(idVals[k][0])] = true;
+      }
+    }
+    // Cegah duplikat dalam satu batch yang sama juga.
+    var seenInBatch = {};
+
+    var rows = [];
+    for (var j = 0; j < items.length; j++) {
+      var item = items[j];
+      var itemId = item.ID_Log ? String(item.ID_Log) : '';
+      if (!itemId) continue;
+      if (existingIds[itemId] || seenInBatch[itemId]) continue;
+      seenInBatch[itemId] = true;
+      rows.push([
         item.ID_Log || '',
         item.Timestamp || '',
         item.Tanggal_Mutabaah || '',
@@ -113,8 +131,8 @@ function doPost(e) {
         item.Tajwid_Capaian || '',
         item.Tajwid_Nilai !== null && item.Tajwid_Nilai !== undefined ? item.Tajwid_Nilai : '',
         item.Catatan || ''
-      ];
-    });
+      ]);
+    }
 
     if (rows.length > 0) {
       sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);

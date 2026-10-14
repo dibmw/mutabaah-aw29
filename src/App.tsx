@@ -48,6 +48,11 @@ export default function App() {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isBroadcastOpen, setIsBroadcastOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  // Badge antrian offline (pekan berjalan) + status online
+  const [pendingCount, setPendingCount] = useState(0);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
 
   // Edit & Delete Log State
   const [editingLog, setEditingLog] = useState<LogMutabaah | null>(null);
@@ -95,11 +100,47 @@ export default function App() {
     // Keep student selection empty initially until teacher searches/selects students
     setSelectedSiswaList([]);
 
-    // Migrate existing UTC timestamps, repair corrupted logs, then auto-cleanup and retry pending
+    // Migrate existing UTC timestamps, repair corrupted logs, then prune
+    // pending basi (per-pekan), auto-cleanup, dan kirim antrian diam-diam.
     MutabaahService.migrateTimestampsToWIB();
     MutabaahService.migrateCorruptedLogs();
     MutabaahService.autoCleanupIfNeeded();
-    MutabaahService.retryPendingLogs().catch(() => {});
+    try {
+      const pruned = MutabaahService.pruneExpiredPendingByWeek();
+      if (pruned.removed > 0) {
+        setTimeout(() => {
+          setToasts(prev => [...prev, {
+            id: Date.now().toString(),
+            type: 'info',
+            message: `${pruned.removed} data pekan lalu dibersihkan otomatis.`
+          }]);
+        }, 500);
+      }
+    } catch { /* abaikan */ }
+    setPendingCount(MutabaahService.getPendingLogsCount());
+    // Kirim diam (tanpa toast) agar angka antrian berkurang sendiri saat online
+    MutabaahService.retryPendingLogs()
+      .then(() => setPendingCount(MutabaahService.getPendingLogsCount()))
+      .catch(() => {});
+  }, []);
+
+  // Kirim diam saat internet nyambung lagi + pantau status online untuk badge Header
+  useEffect(() => {
+    const updateOnline = () => setIsOnline(navigator.onLine);
+    const handleOnline = () => {
+      updateOnline();
+      MutabaahService.retryPendingLogs()
+        .then(() => setPendingCount(MutabaahService.getPendingLogsCount()))
+        .catch(() => setPendingCount(MutabaahService.getPendingLogsCount()));
+    };
+    const handleOffline = () => updateOnline();
+    updateOnline();
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   // Refresh mingguan: anchor Senin 00:00 WIB (weekId = tanggal Senin pekan berjalan)
@@ -321,7 +362,13 @@ export default function App() {
         };
 
         MutabaahService.updateLog(editingLog.ID_Log, updates);
-        addToast('success', `Data mutabaah untuk ${studentName} berhasil diperbarui.`);
+        setPendingCount(MutabaahService.getPendingLogsCount());
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          const n = MutabaahService.getPendingLogsCount();
+          addToast('info', `Tersimpan offline di HP ini (antri ${n}). Jangan hapus data browser, tekan Sync saat online.`);
+        } else {
+          addToast('success', `Data mutabaah untuk ${studentName} berhasil diperbarui.`);
+        }
         setEditingLog(null);
       } else {
         // Create mode
@@ -329,14 +376,26 @@ export default function App() {
           const student = targetList[0];
           const studentFormData = { ...baseFormData, ID_Siswa: student.ID_Siswa };
           const newLog = MutabaahService.addLog(studentFormData, currentUser);
-          addToast('success', `Berhasil! Data mutabaah untuk ${newLog.Nama_Siswa} (NIS: ${newLog.ID_Siswa}) telah disimpan.`);
+          setPendingCount(MutabaahService.getPendingLogsCount());
+          if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            const n = MutabaahService.getPendingLogsCount();
+            addToast('info', `Tersimpan offline di HP ini (antri ${n}). Jangan hapus data browser, tekan Sync saat online.`);
+          } else {
+            addToast('success', `Berhasil! Data mutabaah untuk ${newLog.Nama_Siswa} (NIS: ${newLog.ID_Siswa}) telah disimpan.`);
+          }
         } else {
           const formDataList = targetList.map(s => ({
             ...baseFormData,
             ID_Siswa: s.ID_Siswa
           }));
           MutabaahService.addMultipleLogs(formDataList, currentUser);
-          addToast('success', `Berhasil! Data mutabaah massal untuk ${targetList.length} siswa telah disimpan.`);
+          setPendingCount(MutabaahService.getPendingLogsCount());
+          if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            const n = MutabaahService.getPendingLogsCount();
+            addToast('info', `Tersimpan offline di HP ini (antri ${n}). Jangan hapus data browser, tekan Sync saat online.`);
+          } else {
+            addToast('success', `Berhasil! Data mutabaah massal untuk ${targetList.length} siswa telah disimpan.`);
+          }
         }
       }
 
@@ -347,20 +406,45 @@ export default function App() {
     }
   };
 
-  // Handle Google Sheets Sync
+  // Handle Google Sheets Sync — 1x klik: prune basi -> kirim antri -> ambil Google
   const handleSyncSheets = async () => {
+    if (isSyncing) return;
     setIsSyncing(true);
-    const result = await MutabaahService.fetchFromGoogleSheets();
-    setIsSyncing(false);
+    try {
+      const pruned = MutabaahService.pruneExpiredPendingByWeek();
+      if (pruned.removed > 0) {
+        addToast('info', `${pruned.removed} data pekan lalu dibersihkan otomatis.`);
+      }
+      const retry = await MutabaahService.retryPendingLogs();
+      setPendingCount(MutabaahService.getPendingLogsCount());
+      const result = await MutabaahService.fetchFromGoogleSheets();
+      setPendingCount(MutabaahService.getPendingLogsCount());
 
-    if (result.success) {
-      addToast('success', result.message);
-      // Refresh state
-      setSiswaList(MutabaahService.getSiswa());
-      setUsersList(MutabaahService.getUsers());
-      refreshPanelB();
-    } else {
-      addToast('info', result.message);
+      if (result.success) {
+        // Refresh state
+        setSiswaList(MutabaahService.getSiswa());
+        setUsersList(MutabaahService.getUsers());
+        refreshPanelB();
+        const pendingNow = MutabaahService.getPendingLogsCount();
+        if (retry.success > 0 && pendingNow === 0) {
+          addToast('success', `Sync beres! ${retry.success} terkirim, tidak ada antrian.`);
+        } else if (retry.success > 0) {
+          addToast('success', `Terkirim ${retry.success}, sisa antri ${pendingNow}.`);
+        } else if (pendingNow > 0) {
+          addToast('info', `${result.message} (masih antri ${pendingNow}).`);
+        } else {
+          addToast('success', result.message);
+        }
+      } else {
+        if (retry.success > 0) {
+          addToast('success', `Terkirim ${retry.success}, Google belum bisa diambil. Data aman di HP.`);
+        } else {
+          addToast('info', result.message);
+        }
+      }
+    } finally {
+      setIsSyncing(false);
+      setPendingCount(MutabaahService.getPendingLogsCount());
     }
   };
 
@@ -392,6 +476,7 @@ export default function App() {
     if (!deleteTargetLog) return;
     MutabaahService.deleteLog(deleteTargetLog.ID_Log);
     setDeleteTargetLog(null);
+    setPendingCount(MutabaahService.getPendingLogsCount());
     refreshPanelB();
     addToast('success', `Log untuk ${deleteTargetLog.Nama_Siswa} berhasil dihapus.`);
   }, [deleteTargetLog, refreshPanelB, addToast]);
@@ -406,6 +491,8 @@ export default function App() {
         onLogin={() => setIsLoginModalOpen(true)}
         onSync={handleSyncSheets}
         isSyncing={isSyncing}
+        pendingCount={pendingCount}
+        isOnline={isOnline}
         onOpenReportWA={() => setIsReportModalOpen(true)}
         onOpenBroadcast={() => setIsBroadcastOpen(true)}
       />

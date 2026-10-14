@@ -1,12 +1,15 @@
 import { MasterUser, MasterSiswa, MasterSurat, LogMutabaah, MutabaahFormData, StudentSummary, PendingAction, JadwalPelajaran } from '../types';
 import { INITIAL_USERS, INITIAL_SISWA, INITIAL_LOGS } from '../data/initialData';
 import { MASTER_SURAT } from '../data/masterSurat';
+import { getJakartaWeekId } from '../utils/weeklyRefresh';
 
 const SPREADSHEET_ID = "1wJMBxsQD4u_shFefiDeTpJYqgB8y1InC7De2XpXysCE";
 const DEFAULT_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxgCPxeO62MewnbWBkYt9NYS157YHyT8-4ieS5ZLM9tqNFhHzgWdCFApM-Xiwea7o3a/exec";
 
 const ARCHIVE_RETENTION_DAYS = 30;
 const STORAGE_SIZE_WARN_BYTES = 4 * 1024 * 1024;
+// Pending per-pekan (Senin-Minggu) + grace 1 pekan agar input Minggu malam
+// masih bisa di-sync Senin. Prune memakai Tanggal_Mutabaah.
 
 const STORAGE_KEYS = {
   USERS: 'mutabaah_master_users_v1',
@@ -611,7 +614,8 @@ export class MutabaahService {
     if (idx === -1) return null;
     logs[idx] = { ...logs[idx], ...updates };
     localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(logs));
-    // Send update webhook
+    // Masuk antrian dulu (enqueue-first), lalu coba kirim. Retry yang menentukan sukses.
+    this.addToPendingActions([{ action: 'update', log: logs[idx], timestamp: logs[idx].Timestamp }]);
     this.sendUpdateToWebhook(logs[idx]);
     return logs[idx];
   }
@@ -621,7 +625,8 @@ export class MutabaahService {
     const filtered = logs.filter(l => l.ID_Log !== id);
     if (filtered.length === logs.length) return false;
     localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(filtered));
-    // Send delete webhook
+    // Masuk antrian dulu agar tidak hilang saat offline
+    this.addToPendingActions([{ action: 'delete', log: { ID_Log: id } as LogMutabaah, timestamp: this.getWIBTimestamp() }]);
     this.sendDeleteToWebhook(id);
     return true;
   }
@@ -716,6 +721,8 @@ export class MutabaahService {
     const updatedLogs = [newLog, ...currentLogs];
     localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(updatedLogs));
 
+    // Enqueue-first: aman offline, Sync 1x yang menentukan sukses via retry+verifikasi
+    this.addToPendingActions([{ action: 'create', log: newLog, timestamp: newLog.Timestamp }]);
     this.sendToWebhook(newLog);
     return newLog;
   }
@@ -783,6 +790,8 @@ export class MutabaahService {
     const updatedLogs = [...newLogs, ...currentLogs];
     localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(updatedLogs));
 
+    // Enqueue-first agar batch offline tidak hilang saat Sync menimpa dari Sheet
+    this.addToPendingActions(newLogs.map(l => ({ action: 'create' as const, log: l, timestamp: l.Timestamp })));
     // Kirim webhook secara sekuensial dengan jeda agar Google Apps Script tidak kewalahan / terkena limit koneksi browser (6 HTTP requests)
     this.sendLogsSequentially(newLogs);
 
@@ -832,11 +841,42 @@ export class MutabaahService {
     }
   }
 
+  /**
+   * Gabung antrian dengan coalesce agar urutan Sync 1x tetap benar:
+   * - create + update => create versi terbaru
+   * - create + delete => hapus keduanya (belum pernah sync, tidak perlu kirim)
+   * - update/delete setelah create yang sudah terkirim => jadi update/delete
+   * - update beruntun => versi terbaru saja
+   */
   private static addToPendingActions(actions: PendingAction[]): void {
-    const existing = this.getPendingActions();
-    const existingIds = new Set(existing.map(a => a.log.ID_Log));
-    const newUnique = actions.filter(a => !existingIds.has(a.log.ID_Log));
-    this.savePendingActions([...existing, ...newUnique]);
+    const map = new Map<string, PendingAction>();
+    for (const a of this.getPendingActions()) {
+      if (a?.log?.ID_Log) map.set(a.log.ID_Log, a);
+    }
+    for (const incoming of actions) {
+      const id = incoming?.log?.ID_Log;
+      if (!id) continue;
+      const prev = map.get(id);
+      if (!prev) {
+        map.set(id, incoming);
+        continue;
+      }
+      // Coalesce berdasarkan pasangan (prev, incoming)
+      if (prev.action === 'create' && incoming.action === 'update') {
+        map.set(id, { action: 'create', log: incoming.log, timestamp: incoming.timestamp });
+      } else if (prev.action === 'create' && incoming.action === 'delete') {
+        map.delete(id);
+      } else if (prev.action === 'create' && incoming.action === 'create') {
+        map.set(id, incoming);
+      } else if (prev.action === 'update' && incoming.action === 'delete') {
+        map.set(id, incoming);
+      } else if (prev.action === 'delete' && incoming.action === 'create') {
+        map.set(id, { action: 'update', log: incoming.log, timestamp: incoming.timestamp });
+      } else {
+        map.set(id, incoming);
+      }
+    }
+    this.savePendingActions([...map.values()]);
   }
 
   /** @deprecated Use addToPendingActions() */
@@ -848,7 +888,40 @@ export class MutabaahService {
     })));
   }
 
+  /** Senin (YYYY-MM-DD) dari `daysAgo` hari lalu dalam zona WIB. */
+  private static getMondayStrDaysAgo(daysAgo: number): string {
+    const d = new Date(Date.now() - daysAgo * 86400000);
+    return getJakartaWeekId(d);
+  }
+
+  /**
+   * Prune pending per-pekan (Senin-Minggu fix) + grace 1 pekan.
+   * Hapus otomatis pending yang Tanggal_Mutabaah < Senin pekan lalu,
+   * agar input Minggu malam masih bisa di-sync Senin.
+   * Return jumlah yang dibuang (untuk toast info).
+   */
+  static pruneExpiredPendingByWeek(): { removed: number } {
+    try {
+      const pending = this.getPendingActions();
+      if (pending.length === 0) return { removed: 0 };
+      const cutoffMonday = this.getMondayStrDaysAgo(7); // Senin pekan lalu
+      const kept = pending.filter(a => {
+        const tgl = (a.log?.Tanggal_Mutabaah || '').slice(0, 10);
+        // Tanpa tanggal dianggap basi agar tidak menumpuk selamanya
+        if (!tgl) return false;
+        return tgl >= cutoffMonday;
+      });
+      const removed = pending.length - kept.length;
+      if (removed > 0) this.savePendingActions(kept);
+      return { removed };
+    } catch {
+      return { removed: 0 };
+    }
+  }
+
   static async retryPendingLogs(): Promise<{ success: number; failed: number }> {
+    // Buang yang basi dulu agar tidak dikirim sia-sia
+    this.pruneExpiredPendingByWeek();
     const pending = this.getPendingActions();
     if (pending.length === 0) return { success: 0, failed: 0 };
 
@@ -903,8 +976,61 @@ export class MutabaahService {
       }
     }
 
+    // Verifikasi karena no-cors selalu fulfilled (opaque): pastikan ID
+    // create/update benar-benar ada di Sheet, delete benar-benar hilang.
+    // Jika fetch verifikasi gagal (offline), pertahankan hasil POST apa adanya.
+    if (success > 0) {
+      try {
+        const verifiedIds = await this.fetchSheetLogIds();
+        if (verifiedIds !== null) {
+          const correctedPending: PendingAction[] = [...stillPending];
+          let verifiedSuccess = 0;
+          // Ambil kandidat sukses dari pending awal (bukan stillPending)
+          const candidateSuccess: PendingAction[] = [];
+          const stillIds = new Set(stillPending.map(a => a.log.ID_Log));
+          for (const a of pending) {
+            if (!stillIds.has(a.log.ID_Log)) candidateSuccess.push(a);
+          }
+          for (const a of candidateSuccess) {
+            const exists = verifiedIds.has(String(a.log.ID_Log));
+            if (a.action === 'delete') {
+              if (!exists) verifiedSuccess++;
+              else { correctedPending.push(a); failed++; success--; }
+            } else {
+              if (exists) verifiedSuccess++;
+              else { correctedPending.push(a); failed++; success--; }
+            }
+          }
+          void verifiedSuccess;
+          this.savePendingActions(correctedPending);
+          return { success, failed };
+        }
+      } catch { /* abaikan, pakai hasil POST */ }
+    }
+
     this.savePendingActions(stillPending);
     return { success, failed };
+  }
+
+  /** Ambil himpunan ID_Log dari Sheet untuk verifikasi. Null jika gagal/offline. */
+  private static async fetchSheetLogIds(): Promise<Set<string> | null> {
+    try {
+      const cacheBuster = Date.now();
+      const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent('Log_Mutabaah')}&_t=${cacheBuster}`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const jsonText = await res.text();
+      if (jsonText.trim().startsWith('<')) return null;
+      const rows = parseGvizJson(jsonText);
+      const ids = new Set<string>();
+      for (let i = 1; i < rows.length; i++) {
+        const id = (rows[i][0] || '').trim();
+        if (id) ids.add(id);
+      }
+      return ids;
+    } catch {
+      return null;
+    }
   }
 
   private static async sendToWebhook(log: LogMutabaah): Promise<void> {
@@ -1134,26 +1260,68 @@ export class MutabaahService {
                     });
                   }
                 }
-                // Merge: sheet logs + orphan pending logs (pending logs not yet in sheet)
-                const sheetLogIds = new Set(logsFromSheet.map(l => l.ID_Log));
-                const orphanPending = this.getPendingLogs().filter(l => !sheetLogIds.has(l.ID_Log));
-                const mergedLogs = [...logsFromSheet, ...orphanPending];
+                // Merge aman anti-hilang: Sheet + pending lokal + lokal-only (upgrade path).
+                // - Pending update/create menang atas Sheet (lebih baru di HP).
+                // - Pending delete membuat ID hilang walau masih ada di Sheet.
+                // - Jangan pernah overwrite membuang data lokal yang belum terbukti masuk Sheet.
+                this.pruneExpiredPendingByWeek();
+                const pendingActions = this.getPendingActions();
+                const pendingDeleteIds = new Set(
+                  pendingActions.filter(a => a.action === 'delete').map(a => String(a.log.ID_Log))
+                );
+                const pendingUpserts = new Map<string, LogMutabaah>();
+                for (const a of pendingActions) {
+                  if (a.action === 'create' || a.action === 'update') {
+                    pendingUpserts.set(String(a.log.ID_Log), a.log);
+                  }
+                }
+                const sheetLogIds = new Set(logsFromSheet.map(l => String(l.ID_Log)));
+                // Lokal-only: data lama (sebelum enqueue-first) yang belum ada di Sheet.
+                let localOnly: LogMutabaah[] = [];
+                try {
+                  const localLogs = this.getLogs();
+                  const pendingIds = new Set(pendingActions.map(a => String(a.log.ID_Log)));
+                  localOnly = localLogs.filter(l => {
+                    const id = String(l.ID_Log);
+                    if (!id || sheetLogIds.has(id) || pendingIds.has(id) || pendingDeleteIds.has(id)) return false;
+                    return Boolean(l.Tanggal_Mutabaah);
+                  });
+                } catch { localOnly = []; }
+                const mergedBase: LogMutabaah[] = [];
+                for (const s of logsFromSheet) {
+                  const id = String(s.ID_Log);
+                  if (pendingDeleteIds.has(id)) continue;
+                  const override = pendingUpserts.get(id);
+                  mergedBase.push(override ?? s);
+                }
+                for (const [id, log] of pendingUpserts) {
+                  if (!sheetLogIds.has(id)) mergedBase.push(log);
+                }
+                for (const l of localOnly) mergedBase.push(l);
+                const mergedLogs = mergedBase;
 
-                // Filter out logs older than retention period
+                // Retensi 30 hari untuk yang sudah sync; pending dikecualikan
+                // (pending tunduk pada prune mingguan, bukan retensi ini).
                 const cutoffDate = new Date();
                 cutoffDate.setDate(cutoffDate.getDate() - ARCHIVE_RETENTION_DAYS);
                 const cutoffStr = `${cutoffDate.getFullYear()}-${this.pad(cutoffDate.getMonth() + 1)}-${this.pad(cutoffDate.getDate())}`;
-                const filteredLogs = mergedLogs.filter(l => (l.Tanggal_Mutabaah || '') >= cutoffStr);
+                const pendingIdSet = new Set(pendingActions.map(a => String(a.log.ID_Log)));
+                const filteredLogs = mergedLogs.filter(l => {
+                  if (pendingIdSet.has(String(l.ID_Log))) return true;
+                  return (l.Tanggal_Mutabaah || '') >= cutoffStr;
+                });
 
                 localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(filteredLogs));
 
-                // Clean pending queue: keep only orphan pending (not in sheet)
-                const orphanActions: PendingAction[] = orphanPending.map(l => ({
-                  action: 'create' as const,
-                  log: l,
-                  timestamp: l.Timestamp
-                }));
-                this.savePendingActions(orphanActions);
+                // Bersihkan pending: create/update yang ID-nya sudah ada di Sheet = terkirim.
+                // Delete yang ID-nya sudah tidak ada = terkirim. Sisanya dipertahankan
+                // dengan action aslinya (jangan convert ke create).
+                const remaining = pendingActions.filter(a => {
+                  const id = String(a.log.ID_Log);
+                  if (a.action === 'delete') return sheetLogIds.has(id);
+                  return !sheetLogIds.has(id);
+                });
+                this.savePendingActions(remaining);
               // --- PARSING SHEET: Jadwal_Pelajaran ---
               } else if (sheetName === 'Jadwal_Pelajaran') {
                 const headers = rows[0].map(h => h.toLowerCase().trim());
@@ -1288,13 +1456,15 @@ export class MutabaahService {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - ARCHIVE_RETENTION_DAYS);
     const cutoffStr = cutoffDate.toISOString().split('T')[0];
+    // Jangan arsipkan yang masih antri (pending hanya tunduk pada prune mingguan)
+    const pendingIds = new Set(this.getPendingActions().map(a => String(a.log.ID_Log)));
 
     const retained: LogMutabaah[] = [];
     const archived: LogMutabaah[] = [];
 
     for (const log of logs) {
       const logDate = log.Tanggal_Mutabaah || '';
-      if (logDate < cutoffStr) {
+      if (logDate < cutoffStr && !pendingIds.has(String(log.ID_Log))) {
         archived.push(log);
       } else {
         retained.push(log);
