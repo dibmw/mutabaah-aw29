@@ -76,19 +76,20 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
       if (!isKurikulum || selectedTeacher === 'MY_ACCOUNT') {
         if (currentUser) {
           const userEmail = currentUser.Email?.trim().toLowerCase();
-          const userName = currentUser.Nama_Guru?.trim().toLowerCase();
           const logEmail = l.Email_Guru?.trim().toLowerCase();
-          const logName = l.Nama_Guru?.trim().toLowerCase();
           const matchByEmail = Boolean(userEmail && logEmail && logEmail === userEmail);
-          const matchByName = Boolean(userName && logName && logName === userName);
+          const matchByName = Boolean(
+            currentUser.Nama_Guru && l.Nama_Guru &&
+            MutabaahService.canonicalGuruKey(currentUser.Nama_Guru) === MutabaahService.canonicalGuruKey(l.Nama_Guru)
+          );
           if (!matchByEmail && !matchByName) return false;
         }
       } else if (selectedTeacher !== 'ALL') {
         const teacherKey = selectedTeacher.trim().toLowerCase();
         const logEmail = l.Email_Guru?.trim().toLowerCase() || '';
-        const logName = l.Nama_Guru?.trim().toLowerCase() || '';
         const matchByEmail = Boolean(logEmail && logEmail === teacherKey);
-        const matchByName = Boolean(logName && logName === teacherKey);
+        const canonTeacher = MutabaahService.canonicalGuruKey(selectedTeacher);
+        const matchByName = !teacherKey.includes('@') && Boolean(canonTeacher && canonTeacher === MutabaahService.canonicalGuruKey(l.Nama_Guru));
         if (!matchByEmail && !matchByName) return false;
       }
 
@@ -157,21 +158,22 @@ export const DailyReportModal: React.FC<DailyReportModalProps> = ({
       if (!isKurikulum || selectedTeacher === 'MY_ACCOUNT') {
         if (currentUser) {
           const userEmail = currentUser.Email?.trim().toLowerCase();
-          const userName = currentUser.Nama_Guru?.trim().toLowerCase();
           const logEmail = log.Email_Guru?.trim().toLowerCase();
-          const logName = log.Nama_Guru?.trim().toLowerCase();
 
           const matchByEmail = Boolean(userEmail && logEmail && logEmail === userEmail);
-          const matchByName = Boolean(userName && logName && logName === userName);
+          const matchByName = Boolean(
+            currentUser.Nama_Guru && log.Nama_Guru &&
+            MutabaahService.canonicalGuruKey(currentUser.Nama_Guru) === MutabaahService.canonicalGuruKey(log.Nama_Guru)
+          );
           if (!matchByEmail && !matchByName) return false;
         }
       } else if (selectedTeacher !== 'ALL') {
         const teacherKey = selectedTeacher.trim().toLowerCase();
         const logEmail = log.Email_Guru?.trim().toLowerCase() || '';
-        const logName = log.Nama_Guru?.trim().toLowerCase() || '';
 
         const matchByEmail = Boolean(logEmail && logEmail === teacherKey);
-        const matchByName = Boolean(logName && logName === teacherKey);
+        const canonTeacher = MutabaahService.canonicalGuruKey(selectedTeacher);
+        const matchByName = !teacherKey.includes('@') && Boolean(canonTeacher && canonTeacher === MutabaahService.canonicalGuruKey(log.Nama_Guru));
         if (!matchByEmail && !matchByName) return false;
       }
 

@@ -315,6 +315,26 @@ export class MutabaahService {
     return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
   }
 
+  /**
+   * Kunci kanonis nama guru: tahan beda gelar/sapaan agar Master_Siswa.Guru
+   * (bergelar) dan Jadwal_Pelajaran.Guru (tanpa gelar) tetap dianggap sama.
+   * - "PUTRA RIZKIANSYAH, S.Pd." == "PUTRA RIZKIANSYAH"
+   * - "Dr. SAHRI SUWANDI, M.Pd." == "Dr. SAHRI SUWANDI"
+   * Inisial ("M. ALMUFARISIN") & apostrof ("NISI JUNIATUN NISA'") dipertahankan.
+   */
+  static canonicalGuruKey(name: string): string {
+    let s = (name || '').trim().toLowerCase();
+    if (!s) return '';
+    // Inti nama = sebelum gelar (setelah koma pertama)
+    s = s.split(',')[0];
+    // Buang sapaan/gelar di depan
+    s = s.replace(/^\s*(dr|dra|drs|ust|ustadz|ustadzah|ustaz|ustazah|ustzh|h|hj|pak|bu|bpk|ibu)\.?\s+/, '');
+    // Buang singkatan bergelar yang masih menempel (mis. "s.pd.", "m.pd.i", "s.ag")
+    s = s.replace(/\b[a-z]{1,3}(?:\.[a-z]{1,3}){1,4}\.?/g, ' ');
+    // Normalisasi titik & spasi (apostrof tetap dipertahankan)
+    return s.replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
   /** Mapel Al-Qur'an: tahan varian "AL-QUR'AN / Al Qur'an / ALQURAN" */
   static isMapelQuran(mapel: string): boolean {
     const norm = (mapel || '').toUpperCase().replace(/[\s'\-`_]/g, '');
@@ -461,13 +481,20 @@ export class MutabaahService {
     const siswaList = this.getSiswa();
     const logs = this.getLogs();
 
+    // Nama tampil kanonis dari Master_User (bergelar) bila tersedia
+    const userDisplayByKey = new Map<string, string>();
+    for (const u of this.getUsers()) {
+      const k = this.canonicalGuruKey(u.Nama_Guru);
+      if (k && !userDisplayByKey.has(k)) userDisplayByKey.set(k, u.Nama_Guru);
+    }
+
     // 1. Jadwal mengajar (KBM) Al-Qur'an hari itu (dari Jadwal_Pelajaran)
     const scheduleMap = new Map<string, { display: string; rows: JadwalPelajaran[] }>();
     for (const row of jadwal) {
       if (this.normalizeHari(row.Hari) !== hari) continue;
       if (!this.isMapelQuran(row.Mapel)) continue;
       for (const nama of this.splitGuruCell(row.Guru)) {
-        const key = this.normalizeNameKey(nama);
+        const key = this.canonicalGuruKey(nama);
         if (!key) continue;
         const existing = scheduleMap.get(key);
         if (existing) {
@@ -508,7 +535,7 @@ export class MutabaahService {
         tanpaPlot.push(s);
         continue;
       }
-      const key = this.normalizeNameKey(gRaw);
+      const key = this.canonicalGuruKey(gRaw);
       const existing = byGuru.get(key);
       if (existing) {
         existing.siswa.push(s);
@@ -542,7 +569,7 @@ export class MutabaahService {
       sudahList.sort((a, b) => this.compareSiswaByKelasNama(a, b));
       result.push({
         guruKey: key,
-        namaGuru: sched?.display || group.display,
+        namaGuru: userDisplayByKey.get(key) || sched?.display || group.display,
         genderGuru: group.gender,
         totalSiswa: scoped.length,
         sudahIsi: sudahList.length,
@@ -558,7 +585,7 @@ export class MutabaahService {
       if (!onlyScheduled) continue;
       result.push({
         guruKey: key,
-        namaGuru: sched.display,
+        namaGuru: userDisplayByKey.get(key) || sched.display,
         genderGuru: '',
         totalSiswa: 0,
         sudahIsi: 0,
