@@ -6,7 +6,7 @@ import { getJakartaWeekId } from '../utils/weeklyRefresh';
 const SPREADSHEET_ID = "1wJMBxsQD4u_shFefiDeTpJYqgB8y1InC7De2XpXysCE";
 const DEFAULT_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxgCPxeO62MewnbWBkYt9NYS157YHyT8-4ieS5ZLM9tqNFhHzgWdCFApM-Xiwea7o3a/exec";
 
-const ARCHIVE_RETENTION_DAYS = 30;
+const ARCHIVE_RETENTION_DAYS = 14;
 const STORAGE_SIZE_WARN_BYTES = 4 * 1024 * 1024;
 // Pending per-pekan (Senin-Minggu) + grace 1 pekan agar input Minggu malam
 // masih bisa di-sync Senin. Prune memakai Tanggal_Mutabaah.
@@ -96,6 +96,24 @@ export class MutabaahService {
   static getWIBDateStr(): string {
     const now = new Date();
     return `${now.getFullYear()}-${this.pad(now.getMonth() + 1)}-${this.pad(now.getDate())}`;
+  }
+
+  /**
+   * Tanggal awal yang perlu diambil dari Sheet untuk Log_Mutabaah:
+   * window retensi, DIPERPANJANG bila ada log pending yang lebih lama
+   * (agar pending rapet/backdate tetap bisa diverifikasi masuk Sheet).
+   */
+  static getLogFetchCutoffStr(): string {
+    const d = new Date();
+    d.setDate(d.getDate() - ARCHIVE_RETENTION_DAYS);
+    let cutoff = `${d.getFullYear()}-${this.pad(d.getMonth() + 1)}-${this.pad(d.getDate())}`;
+    try {
+      for (const a of this.getPendingActions()) {
+        const t = a.log?.Tanggal_Mutabaah;
+        if (t && t < cutoff) cutoff = t;
+      }
+    } catch { /* abaikan */ }
+    return cutoff;
   }
 
   // Migrate existing localStorage timestamps from UTC to WIB (+7 hours)
@@ -1154,11 +1172,23 @@ export class MutabaahService {
       const failedSheets: string[] = [];
       let htmlDetected = false;
 
+      // Batasi pengambilan Log_Mutabaah ke window retensi (+ tanggal log pending)
+      // agar payload tidak membengkak (di HP bisa >9MB) dan tetap konsisten.
+      const logCutoffStr = this.getLogFetchCutoffStr();
+
       for (const sheetName of sheets) {
         const cacheBuster = Date.now();
-        const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&_t=${cacheBuster}`;
+        const isLogSheet = sheetName === 'Log_Mutabaah';
+        const buildUrl = (filterLogs: boolean): string => {
+          const params = new URLSearchParams();
+          params.set('tqx', 'out:json');
+          params.set('sheet', sheetName);
+          params.set('_t', String(cacheBuster));
+          if (filterLogs) params.set('tq', `select * where C >= date '${logCutoffStr}'`);
+          return `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?${params.toString()}`;
+        };
         try {
-          const res = await fetch(url, { cache: 'no-store' });
+          const res = await fetch(buildUrl(isLogSheet), { cache: 'no-store' });
           if (!res.ok) {
             failedSheets.push(sheetName);
             continue;
@@ -1171,10 +1201,30 @@ export class MutabaahService {
             continue;
           }
 
-          // Terambil valid (walau kosong) → hitung sukses per-sheet
-          fetchedSheets.push(sheetName);
+          let rows = parseGvizJson(jsonText).filter(r => r.some(cell => cell.trim().length > 0));
 
-          const rows = parseGvizJson(jsonText).filter(r => r.some(cell => cell.trim().length > 0));
+          // Fallback: query ber-filter kosong/hanya header → ambil penuh agar
+          // data tidak pernah terhapus diam-diam (mis. kolom tanggal berubah tipe).
+          if (isLogSheet && rows.length < 2) {
+            try {
+              const resFull = await fetch(buildUrl(false), { cache: 'no-store' });
+              if (resFull.ok) {
+                const fullText = await resFull.text();
+                if (!fullText.trim().startsWith('<')) {
+                  const fullRows = parseGvizJson(fullText).filter(r => r.some(cell => cell.trim().length > 0));
+                  if (fullRows.length > rows.length) rows = fullRows;
+                }
+              }
+            } catch { /* pakai hasil ber-filter */ }
+          }
+
+          // Hitung sukses hanya SETELAH payload benar-benar ter-parse, supaya
+          // kegagalan parse tidak lagi dilaporkan sebagai "Tersinkron".
+          if (rows.length === 0) {
+            failedSheets.push(sheetName);
+            continue;
+          }
+          fetchedSheets.push(sheetName);
 
           if (rows.length >= 1) {
               if (sheetName === 'Master_User') {
@@ -1486,15 +1536,47 @@ export class MutabaahService {
     } catch (e) {
       const err = e as { name?: string; code?: number };
       const quotaExceeded = err?.name === 'QuotaExceededError' || err?.code === 22 || err?.code === 1014;
-      if (quotaExceeded) {
-        try {
-          this.autoCleanupIfNeeded();
-          localStorage.setItem(key, value);
-          return true;
-        } catch {
-          return false;
-        }
+      if (!quotaExceeded) return false;
+      // Kuota penuh (umum di HP, batas ~5MB): pangkas log tertua bertahap
+      // agar data terbaru tetap tersimpan. Log pending selalu dipertahankan.
+      if (key === STORAGE_KEYS.LOGS && this.trimLogsValueToFit(key, value)) {
+        return true;
       }
+      try {
+        this.autoCleanupIfNeeded();
+        localStorage.setItem(key, value);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  /**
+   * Simpan versi terpangkas dari daftar log: buang log terlama sedikit demi
+   * sedikit sampai muat, tapi jangan pernah buang log yang masih pending.
+   */
+  private static trimLogsValueToFit(key: string, value: string): boolean {
+    try {
+      const logs = JSON.parse(value) as LogMutabaah[];
+      if (!Array.isArray(logs) || logs.length === 0) return false;
+      const pendingIds = new Set(this.getPendingActions().map(a => String(a.log.ID_Log)));
+      const sorted = [...logs].sort((a, b) =>
+        (b.Tanggal_Mutabaah || '').localeCompare(a.Tanggal_Mutabaah || '') ||
+        (b.Timestamp || '').localeCompare(a.Timestamp || '')
+      );
+      const mustKeep = sorted.filter(l => pendingIds.has(String(l.ID_Log)));
+      const optional = sorted.filter(l => !pendingIds.has(String(l.ID_Log)));
+      for (const fraction of [0.75, 0.5, 0.35, 0.25, 0.15, 0.05]) {
+        const keepCount = Math.max(1, Math.floor(optional.length * fraction));
+        const subset = [...mustKeep, ...optional.slice(0, keepCount)];
+        try {
+          localStorage.setItem(key, JSON.stringify(subset));
+          return true;
+        } catch { /* coba porsi lebih kecil */ }
+      }
+      return false;
+    } catch {
       return false;
     }
   }

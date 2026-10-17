@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { MasterUser } from '../types';
 import { MutabaahService } from '../services/mutabaahService';
-import { X, Copy, Send, Calendar, BellRing, Check, RefreshCw, Users, ChevronDown } from 'lucide-react';
+import { X, Copy, Send, Calendar, BellRing, Check, RefreshCw, Users, ChevronDown, AlertTriangle } from 'lucide-react';
 
 interface BroadcastReminderModalProps {
   isOpen: boolean;
@@ -25,6 +25,7 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [lastSyncOk, setLastSyncOk] = useState<boolean | null>(null);
+  const [lastSyncMsg, setLastSyncMsg] = useState<string | null>(null);
 
   const isKurikulum = useMemo(
     () => MutabaahService.isKurikulumAccount(currentUser?.Email),
@@ -38,6 +39,7 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
       const result = await MutabaahService.fetchFromGoogleSheets();
       setLastSyncAt(MutabaahService.getWIBTimestamp().slice(11, 16));
       setLastSyncOk(result.success);
+      setLastSyncMsg(result.message);
       setRefreshKey(k => k + 1);
       if (showToast) {
         if (result.success) onToast('success', 'Data berhasil disinkronkan dari Google Sheets!');
@@ -46,6 +48,7 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
     } catch (e) {
       console.warn('Sync failed in BroadcastReminderModal', e);
       setLastSyncOk(false);
+      setLastSyncMsg('Gagal menyinkronkan data dari Google Sheets.');
       if (showToast) onToast('error', 'Gagal menyinkronkan data dari Google Sheets.');
     } finally {
       setIsSyncing(false);
@@ -292,6 +295,15 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
                   </button>
                 </div>
               </div>
+
+              {lastSyncOk === false && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl px-3 py-2 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                  <p className="text-[11px] text-amber-800 font-semibold leading-snug">
+                    {lastSyncMsg || 'Sebagian data gagal dimuat dari Google Sheets.'} Daftar di bawah mungkin belum terbaru — tekan tombol Sinkron untuk coba lagi.
+                  </p>
+                </div>
+              )}
 
               {filtered.length === 0 && (
                 <div className="p-10 text-center bg-white rounded-xl border border-emerald-200">
