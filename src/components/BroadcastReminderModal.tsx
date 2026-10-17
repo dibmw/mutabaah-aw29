@@ -23,6 +23,8 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
   const [refreshKey, setRefreshKey] = useState(0);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [lastSyncOk, setLastSyncOk] = useState<boolean | null>(null);
 
   const isKurikulum = useMemo(
     () => MutabaahService.isKurikulumAccount(currentUser?.Email),
@@ -33,11 +35,18 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
     setIsSyncing(true);
     try {
       MutabaahService.pruneExpiredPendingByWeek();
-      await MutabaahService.fetchFromGoogleSheets();
+      const result = await MutabaahService.fetchFromGoogleSheets();
+      setLastSyncAt(MutabaahService.getWIBTimestamp().slice(11, 16));
+      setLastSyncOk(result.success);
       setRefreshKey(k => k + 1);
-      if (showToast) onToast('success', 'Data berhasil disinkronkan dari Google Sheets!');
+      if (showToast) {
+        if (result.success) onToast('success', 'Data berhasil disinkronkan dari Google Sheets!');
+        else onToast('error', result.message);
+      }
     } catch (e) {
       console.warn('Sync failed in BroadcastReminderModal', e);
+      setLastSyncOk(false);
+      if (showToast) onToast('error', 'Gagal menyinkronkan data dari Google Sheets.');
     } finally {
       setIsSyncing(false);
     }
@@ -48,6 +57,21 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
       setSelectedDate(MutabaahService.getWIBDateStr());
       handleSync(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  // Muat ulang saat tab kembali aktif / window fokus agar daftar tidak basi
+  useEffect(() => {
+    if (!isOpen) return;
+    const onActive = () => {
+      if (document.visibilityState === 'visible') void handleSync(false);
+    };
+    document.addEventListener('visibilitychange', onActive);
+    window.addEventListener('focus', onActive);
+    return () => {
+      document.removeEventListener('visibilitychange', onActive);
+      window.removeEventListener('focus', onActive);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
@@ -243,6 +267,11 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
                   <span className="text-sm sm:text-base font-extrabold text-[#1E3A8A]">
                     {guruBelumCount} guru belum lengkap <span className="text-xs font-semibold text-slate-500">({totalBelum} siswa belum isi)</span>
                   </span>
+                  {lastSyncAt && (
+                    <span className={`text-[10px] font-bold block mt-0.5 ${lastSyncOk ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      {lastSyncOk ? 'Tersinkron' : 'Sync sebagian (ada sheet gagal)'} • terakhir {lastSyncAt}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <button

@@ -1044,7 +1044,7 @@ export class MutabaahService {
     try {
       const cacheBuster = Date.now();
       const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent('Log_Mutabaah')}&_t=${cacheBuster}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) return null;
       const jsonText = await res.text();
       if (jsonText.trim().startsWith('<')) return null;
@@ -1150,28 +1150,33 @@ export class MutabaahService {
   static async fetchFromGoogleSheets(): Promise<{ success: boolean; message: string }> {
     try {
       const sheets = ['Master_User', 'Master_Siswa', 'Master_Surat', 'Log_Mutabaah', 'Jadwal_Pelajaran'];
-      let fetchedAny = false;
+      const fetchedSheets: string[] = [];
+      const failedSheets: string[] = [];
       let htmlDetected = false;
 
       for (const sheetName of sheets) {
         const cacheBuster = Date.now();
         const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&_t=${cacheBuster}`;
         try {
-          const res = await fetch(url);
-          if (res.ok) {
-            const jsonText = await res.text();
-            
-            if (jsonText.trim().startsWith('<')) {
-              htmlDetected = true;
-              continue;
-            }
+          const res = await fetch(url, { cache: 'no-store' });
+          if (!res.ok) {
+            failedSheets.push(sheetName);
+            continue;
+          }
+          const jsonText = await res.text();
 
-            const rows = parseGvizJson(jsonText).filter(r => r.some(cell => cell.trim().length > 0));
-            
-            if (rows.length >= 1) {
-              fetchedAny = true;
+          if (jsonText.trim().startsWith('<')) {
+            htmlDetected = true;
+            failedSheets.push(sheetName);
+            continue;
+          }
 
-              // --- PARSING SHEET: Master_User ---
+          // Terambil valid (walau kosong) → hitung sukses per-sheet
+          fetchedSheets.push(sheetName);
+
+          const rows = parseGvizJson(jsonText).filter(r => r.some(cell => cell.trim().length > 0));
+
+          if (rows.length >= 1) {
               if (sheetName === 'Master_User') {
                 const users: MasterUser[] = [];
                 const headers = rows[0].map(h => h.toLowerCase().trim());
@@ -1207,7 +1212,7 @@ export class MutabaahService {
                 }
 
                 if (users.length > 0) {
-                  localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+                  this.safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(users));
                 }
 
               // --- PARSING SHEET: Master_Siswa ---
@@ -1254,7 +1259,7 @@ export class MutabaahService {
                   }
                 }
                 if (siswaList.length > 0) {
-                  localStorage.setItem(STORAGE_KEYS.SISWA, JSON.stringify(siswaList));
+                  this.safeSetItem(STORAGE_KEYS.SISWA, JSON.stringify(siswaList));
                 }
 
               // --- PARSING SHEET: Log_Mutabaah ---
@@ -1338,7 +1343,7 @@ export class MutabaahService {
                   return (l.Tanggal_Mutabaah || '') >= cutoffStr;
                 });
 
-                localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(filteredLogs));
+                this.safeSetItem(STORAGE_KEYS.LOGS, JSON.stringify(filteredLogs));
 
                 // Bersihkan pending: create/update yang ID-nya sudah ada di Sheet = terkirim.
                 // Delete yang ID-nya sudah tidak ada = terkirim. Sisanya dipertahankan
@@ -1386,25 +1391,34 @@ export class MutabaahService {
                   });
                 }
                 // Simpan walau kosong agar filter jadwal tahu sheet sudah disinkron
-                localStorage.setItem(STORAGE_KEYS.JADWAL, JSON.stringify(jadwal));
+                this.safeSetItem(STORAGE_KEYS.JADWAL, JSON.stringify(jadwal));
               }
-            }
           }
         } catch (e) {
           console.warn(`Gagal mengambil sheet ${sheetName}:`, e);
+          failedSheets.push(sheetName);
         }
       }
 
-      if (fetchedAny) {
+      // Sukses hanya bila SEMUA sheet terambil. Data yang berhasil tetap
+      // disimpan (partial apply) sehingga kegagalan satu sheet tidak membuang
+      // update sheet lain.
+      if (failedSheets.length === 0 && fetchedSheets.length === sheets.length) {
         return { success: true, message: "Berhasil menyinkronkan data dari Google Sheets!" };
-      } else if (htmlDetected) {
-        return { 
-          success: false, 
-          message: "Akses Google Sheets terbatas. Pastikan 'Akses Umum' pada Google Sheet diatur ke 'Siapa saja yang memiliki link' (Viewer)." 
-        };
-      } else {
+      }
+      if (fetchedSheets.length === 0) {
+        if (htmlDetected) {
+          return {
+            success: false,
+            message: "Akses Google Sheets terbatas. Pastikan 'Akses Umum' pada Google Sheet diatur ke 'Siapa saja yang memiliki link' (Viewer)."
+          };
+        }
         return { success: false, message: "Koneksi Google Sheets dibatasi atau tidak dapat dijangkau. Menggunakan data lokal." };
       }
+      return {
+        success: false,
+        message: `Sebagian data belum tersinkron (gagal: ${failedSheets.join(', ')}). Data lain tetap diperbarui.`
+      };
     } catch (e) {
       return { success: false, message: "Gagal menyambung ke Google Sheets. Menggunakan database lokal." };
     }
@@ -1420,7 +1434,7 @@ export class MutabaahService {
     if (!cleanNis) return [];
     const cacheBuster = Date.now();
     const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent('Log_Mutabaah')}&_t=${cacheBuster}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const jsonText = await res.text();
     if (jsonText.trim().startsWith('<')) {
@@ -1462,6 +1476,27 @@ export class MutabaahService {
       return String(b.Timestamp || '').localeCompare(String(a.Timestamp || ''));
     });
     return logs.slice(0, limit);
+  }
+
+  /** Tulis localStorage dengan pengaman kuota. Coba arsip bila kuota penuh. */
+  private static safeSetItem(key: string, value: string): boolean {
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (e) {
+      const err = e as { name?: string; code?: number };
+      const quotaExceeded = err?.name === 'QuotaExceededError' || err?.code === 22 || err?.code === 1014;
+      if (quotaExceeded) {
+        try {
+          this.autoCleanupIfNeeded();
+          localStorage.setItem(key, value);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    }
   }
 
   static getStorageSizeBytes(): number {
