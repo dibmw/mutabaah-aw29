@@ -103,6 +103,20 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
     () => statusList.filter(s => s.totalSiswa > 0 && s.belumList.length > 0 && s.guruKey !== '__tanpa_plot__'),
     [statusList]
   );
+  const adaSiswa = useMemo(() => statusList.some(s => s.totalSiswa > 0), [statusList]);
+  const semuaLengkap = useMemo(() => adaSiswa && guruBelum.length === 0, [adaSiswa, guruBelum]);
+  const belumSamaSekali = useMemo(() => adaSiswa && guruLengkap.length === 0, [adaSiswa, guruLengkap]);
+  const totalSiswaLengkap = useMemo(
+    () => guruLengkap.reduce((total, g) => total + g.totalSiswa, 0),
+    [guruLengkap]
+  );
+  const totalSiswaTerjadwal = useMemo(
+    () => statusList.reduce((total, s) => total + s.totalSiswa, 0),
+    [statusList]
+  );
+  const persentaseLengkap = totalSiswaTerjadwal > 0
+    ? Math.round((totalSiswaLengkap / totalSiswaTerjadwal) * 100)
+    : 0;
 
   const greetingFor = (namaGuru: string, genderGuru: string): string => {
     const title = MutabaahService.getGuruTitle(genderGuru);
@@ -146,33 +160,55 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
   };
 
   const buildGroupRecapText = (): string => {
+    if (!adaSiswa) return '';
+
     const tanggalId = MutabaahService.formatTanggalIndonesia(selectedDate);
-    let text = `✅ *REKAP MUTABAAH HARIAN*\n`;
-    text += `🏫 *AL-WILDAN 29 DEPOK*\n`;
-    text += `📅 *${tanggalId}*\n\n`;
-    text += `Bismillah\n`;
-    text += `Assalamu'alaikum warahmatullahi wabarakatuh,\n\n`;
-    if (guruLengkap.length === 0) {
-      text += `_(Belum ada guru yang lengkap hari ini)_\n\n`;
-    } else {
-      text += `Syukran, jazaakumullahu khairan kepada guru berikut yang mutabaahnya sudah terisi lengkap hari ini:\n\n`;
+    const header = `🏫 *AL-WILDAN ISLAMIC SCHOOL 29 DEPOK*\n` +
+      `📅 *${tanggalId}*\n\n` +
+      `Bismillah\n` +
+      `Assalamu'alaikum warahmatullahi wabarakatuh,\n\n`;
+    const footer = `_Wassalamu'alaikum warahmatullahi wabarakatuh_`;
+
+    if (semuaLengkap) {
+      let text = `✅ *MUTABAAH AL-QUR'AN — LENGKAP*\n`;
+      text += header;
+      text += `Alhamdulillah, seluruh guru yang mengajar Al-Qur'an hari ini telah menyelesaikan pengisian mutabaah. Jazaakumullahu khairan. 🤲\n\n`;
+      text += `*Rekap Pengisian — ${guruLengkap.length} guru, ${totalSiswaLengkap} siswa (${persentaseLengkap}%):*\n`;
       guruLengkap.forEach((g, i) => {
         text += `${i + 1}. ${greetingFor(g.namaGuru, g.genderGuru)} — ${g.sudahIsi}/${g.totalSiswa} siswa ✅\n`;
       });
-      text += `\n`;
+      text += `\nSemoga Allah membalas amanah dan ikhtiar para guru. Barakallahu fiikum.\n\n`;
+      text += footer;
+      return text;
     }
-    if (guruBelum.length === 0) {
-      text += `Semua guru yang mengajar hari ini sudah lengkap ✅\n\n`;
-    } else {
-      text += `Sedangkan guru berikut masih ada yang belum terisi:\n\n`;
+
+    if (belumSamaSekali) {
+      let text = `⏳ *REMINDER MUTABAAH HARIAN*\n`;
+      text += header;
+      text += `Belum ada guru yang menyelesaikan pengisian mutabaah hari ini.\n\n`;
+      text += `*Guru yang masih perlu melengkapi:*\n`;
       guruBelum.forEach((g, i) => {
         const kurang = g.totalSiswa - g.sudahIsi;
         text += `${i + 1}. ${greetingFor(g.namaGuru, g.genderGuru)} — ${g.sudahIsi}/${g.totalSiswa} siswa (kurang ${kurang})\n`;
       });
-      text += `\n`;
+      text += `\nMohon berkenan menyusul pengisiannya. 🙏\n\n`;
+      text += footer;
+      return text;
     }
-    text += `Bagi yang belum lengkap, mohon berkenan menyusul pengisiannya. 🙏\n\n`;
-    text += `_Wassalamu'alaikum warahmatullahi wabarakatuh_`;
+
+    let text = `✅ *REKAP MUTABAAH HARIAN*\n`;
+    text += header;
+    text += `Syukran, jazaakumullahu khairan kepada guru berikut yang mutabaahnya sudah terisi lengkap hari ini:\n\n`;
+    guruLengkap.forEach((g, i) => {
+      text += `${i + 1}. ${greetingFor(g.namaGuru, g.genderGuru)} — ${g.sudahIsi}/${g.totalSiswa} siswa ✅\n`;
+    });
+    text += `\nSedangkan guru berikut masih ada yang belum terisi:\n\n`;
+    guruBelum.forEach((g, i) => {
+      const kurang = g.totalSiswa - g.sudahIsi;
+      text += `${i + 1}. ${greetingFor(g.namaGuru, g.genderGuru)} — ${g.sudahIsi}/${g.totalSiswa} siswa (kurang ${kurang})\n`;
+    });
+    text += `\nBagi yang belum lengkap, mohon berkenan menyusul pengisiannya. 🙏\n\n`;
+    text += footer;
     return text;
   };
 
@@ -268,7 +304,13 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
                 <div>
                   <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider block">Status Pengisian</span>
                   <span className="text-sm sm:text-base font-extrabold text-[#1E3A8A]">
-                    {guruBelumCount} guru belum lengkap <span className="text-xs font-semibold text-slate-500">({totalBelum} siswa belum isi)</span>
+                    {!adaSiswa ? (
+                      'Belum ada data siswa'
+                    ) : semuaLengkap ? (
+                      <>Semua guru sudah lengkap <span className="text-xs font-semibold text-emerald-600">({totalSiswaLengkap} siswa)</span></>
+                    ) : (
+                      <>{guruBelumCount} guru belum lengkap <span className="text-xs font-semibold text-slate-500">({totalBelum} siswa belum isi)</span></>
+                    )}
                   </span>
                   {lastSyncAt && (
                     <span className={`text-[10px] font-bold block mt-0.5 ${lastSyncOk ? 'text-emerald-600' : 'text-amber-600'}`}>
@@ -286,12 +328,37 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
                     <span className="hidden sm:inline">{isSyncing ? 'Memuat...' : 'Sinkron'}</span>
                   </button>
                   <button
-                    onClick={() => copyText(buildGroupRecapText(), '__grup__', 'Rekap grup berhasil dicopy! Siap dipaste ke grup Al-Qur\'an.')}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg border border-emerald-500 transition-all active:scale-95"
-                    title="Copy rekap guru lengkap untuk grup Al-Qur'an"
+                    onClick={() => {
+                      if (!adaSiswa) {
+                        onToast('info', 'Belum ada data untuk direkap.');
+                        return;
+                      }
+                      void copyText(
+                        buildGroupRecapText(),
+                        '__grup__',
+                        semuaLengkap
+                          ? 'Rekap lengkap berhasil dicopy! Siap dipaste ke grup Al-Qur\'an.'
+                          : 'Rekap grup berhasil dicopy! Siap dipaste ke grup Al-Qur\'an.'
+                      );
+                    }}
+                    disabled={!adaSiswa}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                      adaSiswa
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 active:scale-95'
+                        : 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed'
+                    }`}
+                    title={
+                      !adaSiswa
+                        ? 'Belum ada data untuk direkap'
+                        : semuaLengkap
+                          ? 'Copy rekap lengkap untuk grup Al-Qur\'an'
+                          : 'Copy rekap guru lengkap untuk grup Al-Qur\'an'
+                    }
                   >
                     {copiedKey === '__grup__' ? <Check className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
-                    <span className="hidden sm:inline">{copiedKey === '__grup__' ? 'Tercopy!' : 'Copy Rekap Grup'}</span>
+                    <span className="hidden sm:inline">
+                      {copiedKey === '__grup__' ? 'Tercopy!' : semuaLengkap ? 'Copy Rekap Lengkap' : 'Copy Rekap Grup'}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -306,11 +373,31 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
               )}
 
               {filtered.length === 0 && (
-                <div className="p-10 text-center bg-white rounded-xl border border-emerald-200">
-                  <Check className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
-                  <h4 className="text-sm font-bold text-slate-700">Semua guru yang mengajar hari ini sudah lengkap ✅</h4>
-                  <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">Tidak ada guru yang belum mengisi mutabaah pada tanggal ini. Gunakan Copy Rekap Grup untuk share ke grup Al-Qur'an.</p>
-                </div>
+                statusList.length === 0 ? (
+                  <div className="p-10 text-center bg-white rounded-xl border border-slate-200">
+                    <Calendar className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                    <h4 className="text-sm font-bold text-slate-700">Tidak ada jadwal KBM Al-Qur'an pada tanggal ini</h4>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">Pilih tanggal lain atau pastikan jadwal Al-Qur'an sudah diisi di Sheet Jadwal_Pelajaran.</p>
+                  </div>
+                ) : !adaSiswa ? (
+                  <div className="p-10 text-center bg-white rounded-xl border border-amber-200">
+                    <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
+                    <h4 className="text-sm font-bold text-slate-700">Belum ada siswa yang diplot untuk guru yang mengajar hari ini</h4>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">Tambahkan nama guru pengampu pada Master_Siswa agar siswa masuk hitungan broadcast.</p>
+                  </div>
+                ) : search.trim() ? (
+                  <div className="p-10 text-center bg-white rounded-xl border border-slate-200">
+                    <Users className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                    <h4 className="text-sm font-bold text-slate-700">Guru tidak ditemukan</h4>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">Tidak ada guru yang cocok dengan pencarian “{search.trim()}”.</p>
+                  </div>
+                ) : (
+                  <div className="p-10 text-center bg-white rounded-xl border border-emerald-200">
+                    <Check className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+                    <h4 className="text-sm font-bold text-slate-700">Semua guru yang mengajar hari ini sudah lengkap ✅</h4>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">Tidak ada guru yang belum mengisi mutabaah pada tanggal ini. Gunakan Copy Rekap Lengkap untuk share ke grup Al-Qur'an.</p>
+                  </div>
+                )
               )}
 
               {filtered.map((entry) => {
