@@ -154,6 +154,8 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
         text += `• ${line}\n`;
       });
     }
+    text += `\n📌 *Sudah input tetapi masih terdata belum isi?*\n`;
+    text += `Klik tombol *Sync* di aplikasi Mutabaah agar data terbaru dimuat.\n`;
     text += `\nSyukran, jazaakumullahu khairan atas perhatian dan kerjasamanya.\n\n`;
     text += `_Wassalamu'alaikum warahmatullahi wabarakatuh_`;
     return text;
@@ -191,6 +193,8 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
         const kurang = g.totalSiswa - g.sudahIsi;
         text += `${i + 1}. ${greetingFor(g.namaGuru, g.genderGuru)} — ${g.sudahIsi}/${g.totalSiswa} siswa (kurang ${kurang})\n`;
       });
+      text += `\n📌 *Catatan:* Jika sudah input tetapi masih terdata belum isi,\n`;
+      text += `klik tombol *Sync* di aplikasi Mutabaah.\n`;
       text += `\nMohon berkenan menyusul pengisiannya. 🙏\n\n`;
       text += footer;
       return text;
@@ -207,6 +211,8 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
       const kurang = g.totalSiswa - g.sudahIsi;
       text += `${i + 1}. ${greetingFor(g.namaGuru, g.genderGuru)} — ${g.sudahIsi}/${g.totalSiswa} siswa (kurang ${kurang})\n`;
     });
+    text += `\n📌 *Catatan:* Jika sudah input tetapi masih terdata belum isi,\n`;
+    text += `klik tombol *Sync* di aplikasi Mutabaah.\n`;
     text += `\nBagi yang belum lengkap, mohon berkenan menyusul pengisiannya. 🙏\n\n`;
     text += footer;
     return text;
