@@ -14,6 +14,16 @@ export interface MasterSiswa {
   Gender_Guru?: string; // L / P (kolom Gender_Guru di Master_Siswa) untuk sapaan Ust./Ustz.
 }
 
+// Plot guru Rumah Tahfidh. Header sheet disamakan dengan Master_Siswa.
+export type RumahTahfidhPlot = MasterSiswa;
+
+// Mode penentuan guru pada Broadcast Reminder.
+// - normal: semua siswa memakai plot Master_Siswa + jadwal pelajaran.
+// - ikhwan: siswa ikhwan memakai plot Rumah_Tahfidh tanpa jadwal;
+//           siswa akhwat tetap memakai mode normal.
+// - akhwat: kebalikannya.
+export type BroadcastMode = 'normal' | 'ikhwan' | 'akhwat';
+
 export interface JadwalPelajaran {
   Hari: string;
   Waktu_Mulai: string;

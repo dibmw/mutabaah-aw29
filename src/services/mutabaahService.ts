@@ -1,4 +1,4 @@
-import { MasterUser, MasterSiswa, MasterSurat, LogMutabaah, MutabaahFormData, StudentSummary, PendingAction, JadwalPelajaran } from '../types';
+import { MasterUser, MasterSiswa, MasterSurat, LogMutabaah, MutabaahFormData, StudentSummary, PendingAction, JadwalPelajaran, RumahTahfidhPlot, BroadcastMode } from '../types';
 import { INITIAL_USERS, INITIAL_SISWA, INITIAL_LOGS } from '../data/initialData';
 import { MASTER_SURAT } from '../data/masterSurat';
 import { getJakartaWeekId } from '../utils/weeklyRefresh';
@@ -19,7 +19,9 @@ const STORAGE_KEYS = {
   CURRENT_USER: 'mutabaah_current_user_v1',
   WEBHOOK_URL: 'mutabaah_google_script_url_v1',
   PENDING_LOGS: 'mutabaah_pending_logs_v1',
-  JADWAL: 'mutabaah_jadwal_pelajaran_v1'
+  JADWAL: 'mutabaah_jadwal_pelajaran_v1',
+  RUMAH_TAHFIDH: 'mutabaah_rumah_tahfidh_v1',
+  BROADCAST_MODE: 'mutabaah_broadcast_mode_v1'
 };
 
 // Helper to parse gviz JSON export (tqx=out:json) into rows (string[][]).
@@ -295,6 +297,41 @@ export class MutabaahService {
     this.saveSiswa(updated);
   }
 
+  // ============ RUMAH TAHFIDH ============
+  static getRumahTahfidh(): RumahTahfidhPlot[] {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.RUMAH_TAHFIDH);
+      if (!stored) return [];
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  static saveRumahTahfidh(plots: RumahTahfidhPlot[]): void {
+    this.safeSetItem(STORAGE_KEYS.RUMAH_TAHFIDH, JSON.stringify(plots));
+  }
+
+  static getBroadcastMode(): BroadcastMode {
+    const stored = localStorage.getItem(STORAGE_KEYS.BROADCAST_MODE);
+    return stored === 'ikhwan' || stored === 'akhwat' ? stored : 'normal';
+  }
+
+  static setBroadcastMode(mode: BroadcastMode): void {
+    localStorage.setItem(STORAGE_KEYS.BROADCAST_MODE, mode);
+  }
+
+  /** Normalisasi gender ke L/P. Menerima "Laki-laki", "Ikhwan", "Putra", dll. */
+  static normalizeGenderKey(gender?: string): 'L' | 'P' | '' {
+    const g = (gender || '').trim().toUpperCase();
+    if (!g) return '';
+    if (g === 'L' || g === 'P') return g;
+    if (g.startsWith('LAKI') || g.includes('IKHWAN') || g.includes('PUTRA')) return 'L';
+    if (g.startsWith('PEREMPUAN') || g.includes('AKHWAT') || g.includes('PUTRI')) return 'P';
+    return '';
+  }
+
   static getSurat(): MasterSurat[] {
     const stored = localStorage.getItem(STORAGE_KEYS.SURAT);
     if (!stored) {
@@ -483,7 +520,7 @@ export class MutabaahService {
     return lines.filter(Boolean);
   }
 
-  static getBroadcastStatus(tanggal: string, onlyScheduled = true): Array<{
+  static getBroadcastStatus(tanggal: string, onlyScheduled = true, mode: BroadcastMode = 'normal'): Array<{
     guruKey: string;
     namaGuru: string;
     genderGuru: string;
@@ -504,6 +541,13 @@ export class MutabaahService {
     for (const u of this.getUsers()) {
       const k = this.canonicalGuruKey(u.Nama_Guru);
       if (k && !userDisplayByKey.has(k)) userDisplayByKey.set(k, u.Nama_Guru);
+    }
+
+    // Fallback gender guru dari Master_Siswa (untuk sapaan bila plot RT kosong)
+    const guruGenderByKey = new Map<string, string>();
+    for (const s of siswaList) {
+      const k = this.canonicalGuruKey(s.Guru || '');
+      if (k && s.Gender_Guru && !guruGenderByKey.has(k)) guruGenderByKey.set(k, s.Gender_Guru);
     }
 
     // 1. Jadwal mengajar (KBM) Al-Qur'an hari itu (dari Jadwal_Pelajaran)
@@ -539,18 +583,62 @@ export class MutabaahService {
       );
     }
 
-    // 2. Kelompokkan siswa by Guru plot (Master_Siswa.Guru), cek ≥1 log di tanggal tsb.
     // Pencocokan ID toleran (spasi/nol depan) agar beda format tulis tidak menghilangkan data.
     const filledIdList = logs
       .filter(l => l.Tanggal_Mutabaah === tanggal && l.ID_Siswa)
       .map(l => String(l.ID_Siswa).trim());
     const isFilled = (id: string): boolean => filledIdList.some(f => this.isSameSiswaId(f, id));
+
+    type Entry = {
+      namaGuru: string;
+      genderGuru: string;
+      siswa: MasterSiswa[];
+      jadwalRows: JadwalPelajaran[];
+      isScheduled: boolean;
+    };
+    const statusMap = new Map<string, Entry>();
+
+    const addStudent = (
+      key: string,
+      namaGuru: string,
+      genderGuru: string,
+      student: MasterSiswa,
+      jadwalRows: JadwalPelajaran[],
+      scheduled: boolean
+    ) => {
+      let entry = statusMap.get(key);
+      if (!entry) {
+        entry = {
+          namaGuru,
+          genderGuru: genderGuru || guruGenderByKey.get(key) || '',
+          siswa: [],
+          jadwalRows: [],
+          isScheduled: scheduled
+        };
+        statusMap.set(key, entry);
+      }
+      if (!entry.genderGuru) entry.genderGuru = genderGuru || guruGenderByKey.get(key) || '';
+      if (!entry.siswa.some(s => this.isSameSiswaId(s.ID_Siswa, student.ID_Siswa))) {
+        entry.siswa.push(student);
+      }
+      for (const row of jadwalRows) {
+        if (!entry.jadwalRows.some(j => j === row)) entry.jadwalRows.push(row);
+      }
+      if (scheduled) entry.isScheduled = true;
+    };
+
+    // 2. Bagian NORMAL:
+    // - mode normal: semua siswa, plot Master_Siswa + jadwal KBM.
+    // - mode RT: hanya gender sebaliknya (ikhwan mode → akhwat, dan sebaliknya).
+    const normalGender: 'L' | 'P' | '' =
+      mode === 'normal' ? '' : (mode === 'ikhwan' ? 'P' : 'L');
     const byGuru = new Map<string, { display: string; gender: string; siswa: MasterSiswa[] }>();
     const tanpaPlot: MasterSiswa[] = [];
     for (const s of siswaList) {
+      if (normalGender && this.normalizeGenderKey(s.Gender) !== normalGender) continue;
       const gRaw = (s.Guru || '').trim();
       if (!gRaw) {
-        tanpaPlot.push(s);
+        if (!normalGender) tanpaPlot.push(s);
         continue;
       }
       const key = this.canonicalGuruKey(gRaw);
@@ -563,10 +651,8 @@ export class MutabaahService {
       }
     }
 
-    // 3. Susun status per guru.
-    // STRICT: siswa masuk hitungan iff pasangan (guru, kelas)-nya ada di
-    // jadwal KBM hari itu. Kelas yang tidak terjadwal tidak ikut ter-broadcast.
-    const result: ReturnType<typeof this.getBroadcastStatus> = [];
+    // STRICT (bagian normal): siswa masuk hitungan iff pasangan (guru, kelas)-nya
+    // ada di jadwal KBM hari itu. Kelas yang tidak terjadwal tidak ikut ter-broadcast.
     for (const [key, group] of byGuru) {
       const sched = scheduleMap.get(key);
       const isScheduled = Boolean(sched);
@@ -581,53 +667,94 @@ export class MutabaahService {
           scoped = inScope.length > 0 ? inScope : group.siswa;
         }
       }
-      const belumList = scoped.filter(s => !isFilled(String(s.ID_Siswa).trim()));
-      const sudahList = scoped.filter(s => isFilled(String(s.ID_Siswa).trim()));
+      const display = userDisplayByKey.get(key) || sched?.display || group.display;
+      for (const s of scoped) {
+        addStudent(key, display, group.gender, s, sched?.rows || [], isScheduled);
+      }
+    }
+    // Guru mengajar tapi tidak punya plot siswa → tampil informatif (0 siswa).
+    // Hanya di mode normal agar mode RT tetap fokus pada plot RT + gender normal.
+    if (mode === 'normal' && onlyScheduled) {
+      for (const [key, sched] of scheduleMap) {
+        if (statusMap.has(key)) continue;
+        statusMap.set(key, {
+          namaGuru: userDisplayByKey.get(key) || sched.display,
+          genderGuru: '',
+          siswa: [],
+          jadwalRows: sched.rows,
+          isScheduled: true
+        });
+      }
+    }
+    // Tanpa plot guru tidak punya pasangan jadwal → keluar dari mode terjadwal
+    const tanpaPlotEntry = mode === 'normal' && tanpaPlot.length > 0 && !onlyScheduled
+      ? (() => {
+          tanpaPlot.sort((a, b) => this.compareSiswaByKelasNama(a, b));
+          return {
+            guruKey: '__tanpa_plot__',
+            namaGuru: 'Tanpa Plot Guru',
+            genderGuru: '',
+            totalSiswa: tanpaPlot.length,
+            sudahIsi: tanpaPlot.filter(s => isFilled(String(s.ID_Siswa).trim())).length,
+            belumList: tanpaPlot.filter(s => !isFilled(String(s.ID_Siswa).trim())),
+            sudahList: tanpaPlot.filter(s => isFilled(String(s.ID_Siswa).trim())),
+            jadwalHariIni: [] as JadwalPelajaran[],
+            isScheduled: false
+          };
+        })()
+      : null;
+
+    // 3. Bagian RUMAH TAHFIDH (hanya mode RT):
+    // plot dari sheet Rumah_Tahfidh, gender siswa sesuai mode, JADWAL DIABAIKAN.
+    if (mode !== 'normal') {
+      const targetGender: 'L' | 'P' = mode === 'ikhwan' ? 'L' : 'P';
+      for (const plot of this.getRumahTahfidh()) {
+        const gRaw = (plot.Guru || '').trim();
+        if (!gRaw) continue;
+        const key = this.canonicalGuruKey(gRaw);
+        if (!key) continue;
+
+        const master = siswaList.find(s => this.isSameSiswaId(s.ID_Siswa, plot.ID_Siswa));
+        const studentGender = this.normalizeGenderKey(master?.Gender || plot.Gender);
+        if (studentGender !== targetGender) continue;
+
+        const id = String(master?.ID_Siswa || plot.ID_Siswa || '').trim();
+        if (!id) continue;
+        const student: MasterSiswa = master || {
+          ID_Siswa: id,
+          Nama_Siswa: plot.Nama_Siswa || id,
+          Kelas: plot.Kelas || '',
+          Kelompok_Halaqah: plot.Kelompok_Halaqah || '',
+          Gender: plot.Gender || '',
+          Guru: plot.Guru || '',
+          Gender_Guru: plot.Gender_Guru || ''
+        };
+        const genderGuru = (plot.Gender_Guru || '').trim() || student.Gender_Guru || '';
+        addStudent(key, userDisplayByKey.get(key) || gRaw, genderGuru, student, [], false);
+      }
+    }
+
+    // 4. Susun hasil akhir per guru
+    const result: ReturnType<typeof this.getBroadcastStatus> = [];
+    for (const [key, entry] of statusMap) {
+      const belumList = entry.siswa.filter(s => !isFilled(String(s.ID_Siswa).trim()));
+      const sudahList = entry.siswa.filter(s => isFilled(String(s.ID_Siswa).trim()));
       belumList.sort((a, b) => this.compareSiswaByKelasNama(a, b));
       sudahList.sort((a, b) => this.compareSiswaByKelasNama(a, b));
       result.push({
         guruKey: key,
-        namaGuru: userDisplayByKey.get(key) || sched?.display || group.display,
-        genderGuru: group.gender,
-        totalSiswa: scoped.length,
+        namaGuru: entry.namaGuru,
+        genderGuru: entry.genderGuru,
+        totalSiswa: entry.siswa.length,
         sudahIsi: sudahList.length,
         belumList,
         sudahList,
-        jadwalHariIni: sched?.rows || [],
-        isScheduled
+        jadwalHariIni: entry.jadwalRows,
+        isScheduled: entry.isScheduled
       });
     }
-    // Guru mengajar tapi tidak punya plot siswa → tampil informatif (0 siswa)
-    for (const [key, sched] of scheduleMap) {
-      if (byGuru.has(key)) continue;
-      if (!onlyScheduled) continue;
-      result.push({
-        guruKey: key,
-        namaGuru: userDisplayByKey.get(key) || sched.display,
-        genderGuru: '',
-        totalSiswa: 0,
-        sudahIsi: 0,
-        belumList: [],
-        sudahList: [],
-        jadwalHariIni: sched.rows,
-        isScheduled: true
-      });
-    }
-    // Tanpa plot guru tidak punya pasangan jadwal → keluar dari mode terjadwal
-    if (tanpaPlot.length > 0 && !onlyScheduled) {
-      tanpaPlot.sort((a, b) => this.compareSiswaByKelasNama(a, b));
-      result.push({
-        guruKey: '__tanpa_plot__',
-        namaGuru: 'Tanpa Plot Guru',
-        genderGuru: '',
-        totalSiswa: tanpaPlot.length,
-        sudahIsi: tanpaPlot.filter(s => isFilled(String(s.ID_Siswa).trim())).length,
-        belumList: tanpaPlot.filter(s => !isFilled(String(s.ID_Siswa).trim())),
-        sudahList: tanpaPlot.filter(s => isFilled(String(s.ID_Siswa).trim())),
-        jadwalHariIni: [],
-        isScheduled: false
-      });
-    }
+    if (tanpaPlotEntry) result.push(tanpaPlotEntry);
+
     // Belum lengkap dulu, lalu lengkap; abjad sebagai tiebreaker
     result.sort((a, b) => {
       const aDone = a.totalSiswa > 0 && a.belumList.length === 0 ? 1 : 0;
@@ -1164,12 +1291,61 @@ export class MutabaahService {
     }
   }
 
+  /** Parse baris sheet Master_Siswa / Rumah_Tahfidh (header sama). */
+  private static parseSiswaRows(rows: string[][]): MasterSiswa[] {
+    if (rows.length < 2) return [];
+    const headers = rows[0].map(h => h.toLowerCase().trim());
+    // Deteksi indeks kolom dinamis agar tahan beda urutan/kapitalisasi header.
+    // Kolom baru: Guru (nama pengampu) & Gender_Guru (L/P).
+    const findIdx = (keys: string[], exclude?: string[]): number => {
+      const idx = headers.findIndex(h =>
+        keys.some(k => h.includes(k)) && !(exclude || []).some(x => h.includes(x))
+      );
+      return idx;
+    };
+    let nisIdx = findIdx(['nis', 'id_siswa', 'id siswa']);
+    let namaIdx = findIdx(['nama_siswa', 'nama siswa', 'nama']);
+    let kelasIdx = findIdx(['kelas', 'id_kelas', 'id kelas']);
+    let genderIdx = findIdx(['gender', 'jenis kelamin', 'jk'], ['guru']);
+    let guruIdx = findIdx(['guru'], ['gender']);
+    let genderGuruIdx = headers.findIndex(h => h.includes('gender') && h.includes('guru'));
+    if (genderGuruIdx === -1) genderGuruIdx = headers.findIndex(h =>
+      (h.includes('jk') && h.includes('guru')) || h === 'l/p' || h === 'l-p'
+    );
+    if (nisIdx === -1) nisIdx = 0;
+    if (namaIdx === -1) namaIdx = 1;
+    if (kelasIdx === -1) kelasIdx = 2;
+    if (genderIdx === -1) genderIdx = 3;
+    if (guruIdx === -1) guruIdx = 4;
+    if (genderGuruIdx === -1) genderGuruIdx = 5;
+
+    const siswaList: MasterSiswa[] = [];
+    for (let i = 1; i < rows.length; i++) {
+      const cols = rows[i];
+      const maxIdx = Math.max(nisIdx, namaIdx);
+      if (cols.length > maxIdx && cols[nisIdx]) {
+        siswaList.push({
+          ID_Siswa: cols[nisIdx].trim(),
+          Nama_Siswa: (cols[namaIdx] || '').trim(),
+          Kelas: cols[kelasIdx] ? cols[kelasIdx].trim() : "Kelas 1",
+          Kelompok_Halaqah: "",
+          Gender: cols[genderIdx] ? cols[genderIdx].trim() : "",
+          Guru: cols[guruIdx] ? cols[guruIdx].trim() : "",
+          Gender_Guru: cols[genderGuruIdx] ? cols[genderGuruIdx].trim().toUpperCase() : ""
+        });
+      }
+    }
+    return siswaList;
+  }
+
   // Fetch live data from public Google Sheet CSV with dynamic column parsing
   static async fetchFromGoogleSheets(): Promise<{ success: boolean; message: string }> {
     try {
-      const sheets = ['Master_User', 'Master_Siswa', 'Master_Surat', 'Log_Mutabaah', 'Jadwal_Pelajaran'];
+      const sheets = ['Master_User', 'Master_Siswa', 'Master_Surat', 'Log_Mutabaah', 'Jadwal_Pelajaran', 'Rumah_Tahfidh'];
+      const optionalSheets = new Set(['Rumah_Tahfidh']);
       const fetchedSheets: string[] = [];
       const failedSheets: string[] = [];
+      const optionalFailedSheets: string[] = [];
       let htmlDetected = false;
 
       // Batasi pengambilan Log_Mutabaah ke window retensi (+ tanggal log pending)
@@ -1190,14 +1366,14 @@ export class MutabaahService {
         try {
           const res = await fetch(buildUrl(isLogSheet), { cache: 'no-store' });
           if (!res.ok) {
-            failedSheets.push(sheetName);
+            (optionalSheets.has(sheetName) ? optionalFailedSheets : failedSheets).push(sheetName);
             continue;
           }
           const jsonText = await res.text();
 
           if (jsonText.trim().startsWith('<')) {
             htmlDetected = true;
-            failedSheets.push(sheetName);
+            (optionalSheets.has(sheetName) ? optionalFailedSheets : failedSheets).push(sheetName);
             continue;
           }
 
@@ -1221,7 +1397,7 @@ export class MutabaahService {
           // Hitung sukses hanya SETELAH payload benar-benar ter-parse, supaya
           // kegagalan parse tidak lagi dilaporkan sebagai "Tersinkron".
           if (rows.length === 0) {
-            failedSheets.push(sheetName);
+            (optionalSheets.has(sheetName) ? optionalFailedSheets : failedSheets).push(sheetName);
             continue;
           }
           fetchedSheets.push(sheetName);
@@ -1267,50 +1443,15 @@ export class MutabaahService {
 
               // --- PARSING SHEET: Master_Siswa ---
               } else if (sheetName === 'Master_Siswa') {
-                const headers = rows[0].map(h => h.toLowerCase().trim());
-                // Deteksi indeks kolom dinamis agar tahan beda urutan/kapitalisasi header.
-                // Kolom baru: Guru (nama pengampu) & Gender_Guru (L/P).
-                const findIdx = (keys: string[], exclude?: string[]): number => {
-                  const idx = headers.findIndex(h =>
-                    keys.some(k => h.includes(k)) && !(exclude || []).some(x => h.includes(x))
-                  );
-                  return idx;
-                };
-                let nisIdx = findIdx(['nis', 'id_siswa', 'id siswa']);
-                let namaIdx = findIdx(['nama_siswa', 'nama siswa', 'nama']);
-                let kelasIdx = findIdx(['kelas', 'id_kelas', 'id kelas']);
-                let genderIdx = findIdx(['gender', 'jenis kelamin', 'jk'], ['guru']);
-                let guruIdx = findIdx(['guru'], ['gender']);
-                let genderGuruIdx = headers.findIndex(h => h.includes('gender') && h.includes('guru'));
-                if (genderGuruIdx === -1) genderGuruIdx = headers.findIndex(h =>
-                  (h.includes('jk') && h.includes('guru')) || h === 'l/p' || h === 'l-p'
-                );
-                if (nisIdx === -1) nisIdx = 0;
-                if (namaIdx === -1) namaIdx = 1;
-                if (kelasIdx === -1) kelasIdx = 2;
-                if (genderIdx === -1) genderIdx = 3;
-                if (guruIdx === -1) guruIdx = 4;
-                if (genderGuruIdx === -1) genderGuruIdx = 5;
-
-                const siswaList: MasterSiswa[] = [];
-                for (let i = 1; i < rows.length; i++) {
-                  const cols = rows[i];
-                  const maxIdx = Math.max(nisIdx, namaIdx);
-                  if (cols.length > maxIdx && cols[nisIdx]) {
-                    siswaList.push({
-                      ID_Siswa: cols[nisIdx].trim(),
-                      Nama_Siswa: (cols[namaIdx] || '').trim(),
-                      Kelas: cols[kelasIdx] ? cols[kelasIdx].trim() : "Kelas 1",
-                      Kelompok_Halaqah: "",
-                      Gender: cols[genderIdx] ? cols[genderIdx].trim() : "",
-                      Guru: cols[guruIdx] ? cols[guruIdx].trim() : "",
-                      Gender_Guru: cols[genderGuruIdx] ? cols[genderGuruIdx].trim().toUpperCase() : ""
-                    });
-                  }
-                }
+                const siswaList = this.parseSiswaRows(rows);
                 if (siswaList.length > 0) {
                   this.safeSetItem(STORAGE_KEYS.SISWA, JSON.stringify(siswaList));
                 }
+
+              // --- PARSING SHEET: Rumah_Tahfidh (header sama dengan Master_Siswa) ---
+              } else if (sheetName === 'Rumah_Tahfidh') {
+                const plotList = this.parseSiswaRows(rows);
+                this.saveRumahTahfidh(plotList);
 
               // --- PARSING SHEET: Log_Mutabaah ---
               } else if (sheetName === 'Log_Mutabaah') {
@@ -1446,14 +1587,21 @@ export class MutabaahService {
           }
         } catch (e) {
           console.warn(`Gagal mengambil sheet ${sheetName}:`, e);
-          failedSheets.push(sheetName);
+          (optionalSheets.has(sheetName) ? optionalFailedSheets : failedSheets).push(sheetName);
         }
       }
 
-      // Sukses hanya bila SEMUA sheet terambil. Data yang berhasil tetap
-      // disimpan (partial apply) sehingga kegagalan satu sheet tidak membuang
-      // update sheet lain.
-      if (failedSheets.length === 0 && fetchedSheets.length === sheets.length) {
+      // Sukses minimal bila SEMUA sheet wajib terambil. Sheet Rumah_Tahfidh
+      // bersifat opsional agar fitur lama tetap jalan sebelum sheet dibuat.
+      const requiredSheetCount = sheets.filter(s => !optionalSheets.has(s)).length;
+      const requiredFetchedCount = fetchedSheets.filter(s => !optionalSheets.has(s)).length;
+      if (failedSheets.length === 0 && requiredFetchedCount === requiredSheetCount) {
+        if (optionalFailedSheets.length > 0) {
+          return {
+            success: true,
+            message: "Sync berhasil. Sheet Rumah_Tahfidh belum bisa dibaca — mode Rumah Tahfidh mungkin belum terbaru."
+          };
+        }
         return { success: true, message: "Berhasil menyinkronkan data dari Google Sheets!" };
       }
       if (fetchedSheets.length === 0) {

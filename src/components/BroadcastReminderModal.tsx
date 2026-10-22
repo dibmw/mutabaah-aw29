@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { MasterUser } from '../types';
+import { MasterUser, BroadcastMode } from '../types';
 import { MutabaahService } from '../services/mutabaahService';
-import { X, Copy, Send, Calendar, BellRing, Check, RefreshCw, Users, ChevronDown, AlertTriangle } from 'lucide-react';
+import { X, Copy, Send, Calendar, BellRing, Check, RefreshCw, Users, ChevronDown, AlertTriangle, Home } from 'lucide-react';
 
 interface BroadcastReminderModalProps {
   isOpen: boolean;
@@ -26,6 +26,24 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [lastSyncOk, setLastSyncOk] = useState<boolean | null>(null);
   const [lastSyncMsg, setLastSyncMsg] = useState<string | null>(null);
+  const [mode, setMode] = useState<BroadcastMode>(() => MutabaahService.getBroadcastMode());
+
+  const modeLabel = mode === 'ikhwan'
+    ? 'Rumah Tahfidh Ikhwan'
+    : mode === 'akhwat'
+      ? 'Rumah Tahfidh Akhwat'
+      : 'Normal';
+
+  const modeDescription = mode === 'normal'
+    ? 'Plot Master_Siswa + jadwal pelajaran Al-Qur\'an.'
+    : mode === 'ikhwan'
+      ? 'Ikhwan memakai plot Rumah_Tahfidh tanpa jadwal; akhwat tetap normal sesuai jadwal.'
+      : 'Akhwat memakai plot Rumah_Tahfidh tanpa jadwal; ikhwan tetap normal sesuai jadwal.';
+
+  const handleModeChange = (nextMode: BroadcastMode) => {
+    setMode(nextMode);
+    MutabaahService.setBroadcastMode(nextMode);
+  };
 
   const isKurikulum = useMemo(
     () => MutabaahService.isKurikulumAccount(currentUser?.Email),
@@ -81,9 +99,11 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
   const statusList = useMemo(() => {
     if (!isOpen) return [];
     void refreshKey;
-    // Selalu hanya guru yang mengajar Al-Qur'an di hari terpilih (jadwal KBM, tanpa toggle)
-    return MutabaahService.getBroadcastStatus(selectedDate, true);
-  }, [isOpen, selectedDate, refreshKey]);
+    // Normal: guru mengajar Al-Qur'an hari itu (jadwal KBM).
+    // Mode RT: gender terpilih memakai plot Rumah_Tahfidh tanpa jadwal,
+    //          gender sebaliknya tetap memakai plot normal + jadwal.
+    return MutabaahService.getBroadcastStatus(selectedDate, true, mode);
+  }, [isOpen, selectedDate, refreshKey, mode]);
 
   // List fokus: hanya guru yang mengajar dan masih ada belum isi
   const filtered = useMemo(() => {
@@ -137,6 +157,12 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
     const sapaan = greetingFor(entry.namaGuru, entry.genderGuru);
     let text = `🔔 *REMINDER PENGISIAN MUTABAAH HARIAN*\n`;
     text += `🏫 *AL-WILDAN ISLAMIC SCHOOL 29 DEPOK*\n\n`;
+    if (mode !== 'normal') {
+      text += `🏠 *MODE ${modeLabel.toUpperCase()}*\n`;
+      text += `${mode === 'ikhwan'
+        ? 'Siswa ikhwan: plot Rumah Tahfidh (tanpa jadwal). Siswa akhwat: plot normal sesuai jadwal.'
+        : 'Siswa akhwat: plot Rumah Tahfidh (tanpa jadwal). Siswa ikhwan: plot normal sesuai jadwal.'}\n\n`;
+    }
     text += `Bismillah\n`;
     text += `Assalamu'alaikum warahmatullahi wabarakatuh,\n`;
     text += `Yth. *${sapaan}* 🙏\n\n`;
@@ -166,6 +192,7 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
 
     const tanggalId = MutabaahService.formatTanggalIndonesia(selectedDate);
     const header = `🏫 *AL-WILDAN ISLAMIC SCHOOL 29 DEPOK*\n` +
+      (mode !== 'normal' ? `🏠 *Mode: ${modeLabel}*\n` : '') +
       `📅 *${tanggalId}*\n\n` +
       `Bismillah\n` +
       `Assalamu'alaikum warahmatullahi wabarakatuh,\n\n`;
@@ -253,7 +280,9 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
             <div>
               <h3 className="text-sm sm:text-base font-extrabold tracking-tight">Broadcast Reminder Guru</h3>
               <p className="text-[11px] sm:text-xs text-blue-200 line-clamp-1">
-                Khusus kurikulum — cek isian harian minimal 1 per siswa
+                {mode === 'normal'
+                  ? 'Khusus kurikulum — cek isian harian minimal 1 per siswa'
+                  : `Mode ${modeLabel} — plot Rumah Tahfidh + normal gender sebaliknya`}
               </p>
             </div>
           </div>
@@ -275,6 +304,36 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
           <>
             {/* Toolbar */}
             <div className="p-3 sm:p-4 bg-slate-50 border-b border-slate-200/80 shrink-0">
+              <div className="mb-3">
+                <label className="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                  <Home className="w-3.5 h-3.5 text-[#D97706]" />
+                  Mode Penentuan Guru
+                </label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {([
+                    { value: 'normal' as BroadcastMode, label: 'Normal' },
+                    { value: 'ikhwan' as BroadcastMode, label: 'RT Ikhwan' },
+                    { value: 'akhwat' as BroadcastMode, label: 'RT Akhwat' }
+                  ]).map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => handleModeChange(opt.value)}
+                      title={opt.value === 'normal' ? 'Mode normal (plot reguler + jadwal)' : `Mode ${opt.value === 'ikhwan' ? 'Rumah Tahfidh Ikhwan' : 'Rumah Tahfidh Akhwat'}`}
+                      className={`px-2 py-2 rounded-xl text-[11px] sm:text-xs font-bold border transition-all active:scale-95 ${
+                        mode === opt.value
+                          ? 'bg-[#1E3A8A] text-white border-[#1E3A8A] shadow-sm'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1 text-[10px] sm:text-[11px] font-medium text-slate-500 leading-snug">
+                  {modeDescription}
+                </p>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
@@ -378,18 +437,45 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
                 </div>
               )}
 
+              {mode !== 'normal' && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 flex items-start gap-2">
+                  <Home className="w-4 h-4 text-[#1E3A8A] mt-0.5 shrink-0" />
+                  <p className="text-[11px] text-blue-900 font-semibold leading-snug">
+                    <strong>{modeLabel}</strong> — {modeDescription} Pastikan sheet <span className="font-mono">Rumah_Tahfidh</span> sudah diisi lalu tekan Sinkron.
+                  </p>
+                </div>
+              )}
+
               {filtered.length === 0 && (
                 statusList.length === 0 ? (
-                  <div className="p-10 text-center bg-white rounded-xl border border-slate-200">
-                    <Calendar className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                    <h4 className="text-sm font-bold text-slate-700">Tidak ada jadwal KBM Al-Qur'an pada tanggal ini</h4>
-                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">Pilih tanggal lain atau pastikan jadwal Al-Qur'an sudah diisi di Sheet Jadwal_Pelajaran.</p>
-                  </div>
+                  mode === 'normal' ? (
+                    <div className="p-10 text-center bg-white rounded-xl border border-slate-200">
+                      <Calendar className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                      <h4 className="text-sm font-bold text-slate-700">Tidak ada jadwal KBM Al-Qur'an pada tanggal ini</h4>
+                      <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">Pilih tanggal lain atau pastikan jadwal Al-Qur'an sudah diisi di Sheet Jadwal_Pelajaran.</p>
+                    </div>
+                  ) : (
+                    <div className="p-10 text-center bg-white rounded-xl border border-blue-200">
+                      <Home className="w-10 h-10 text-blue-400 mx-auto mb-3" />
+                      <h4 className="text-sm font-bold text-slate-700">Belum ada data {modeLabel}</h4>
+                      <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                        Pastikan sheet <span className="font-mono">Rumah_Tahfidh</span> sudah dibuat dan diisi untuk siswa {mode === 'ikhwan' ? 'ikhwan' : 'akhwat'}, lalu tekan tombol Sinkron.
+                      </p>
+                    </div>
+                  )
                 ) : !adaSiswa ? (
                   <div className="p-10 text-center bg-white rounded-xl border border-amber-200">
                     <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
-                    <h4 className="text-sm font-bold text-slate-700">Belum ada siswa yang diplot untuk guru yang mengajar hari ini</h4>
-                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">Tambahkan nama guru pengampu pada Master_Siswa agar siswa masuk hitungan broadcast.</p>
+                    <h4 className="text-sm font-bold text-slate-700">
+                      {mode === 'normal'
+                        ? 'Belum ada siswa yang diplot untuk guru yang mengajar hari ini'
+                        : `Belum ada siswa ${mode === 'ikhwan' ? 'ikhwan' : 'akhwat'} yang terplot di Rumah_Tahfidh`}
+                    </h4>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                      {mode === 'normal'
+                        ? 'Tambahkan nama guru pengampu pada Master_Siswa agar siswa masuk hitungan broadcast.'
+                        : 'Lengkapi plot siswa pada sheet Rumah_Tahfidh, lalu tekan Sinkron.'}
+                    </p>
                   </div>
                 ) : search.trim() ? (
                   <div className="p-10 text-center bg-white rounded-xl border border-slate-200">
@@ -400,7 +486,7 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
                 ) : (
                   <div className="p-10 text-center bg-white rounded-xl border border-emerald-200">
                     <Check className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
-                    <h4 className="text-sm font-bold text-slate-700">Semua guru yang mengajar hari ini sudah lengkap ✅</h4>
+                    <h4 className="text-sm font-bold text-slate-700">Semua guru pada mode ini sudah lengkap ✅</h4>
                     <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">Tidak ada guru yang belum mengisi mutabaah pada tanggal ini. Gunakan Copy Rekap Lengkap untuk share ke grup Al-Qur'an.</p>
                   </div>
                 )
@@ -464,7 +550,8 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
                         {entry.jadwalHariIni.length > 0 && (
                           <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                              Sumber jadwal KBM{hariLabel ? ` hari ${hariLabel}` : ''} (audit)
+                              Sumber jadwal KBM{hariLabel ? ` hari ${hariLabel}` : ''}
+                              {mode === 'normal' ? ' (audit)' : ' (bagian normal)'}
                             </p>
                             <ul className="text-[11px] text-slate-600 font-medium space-y-0.5">
                               {entry.jadwalHariIni.map((j, idx) => (
