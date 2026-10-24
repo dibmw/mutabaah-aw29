@@ -483,6 +483,12 @@ export class MutabaahService {
     return (kelas || '').trim().toUpperCase().replace(/^KELAS\s+/, '').replace(/\s+/g, '');
   }
 
+  /** Deteksi apakah kelas adalah Kelas 1 atau Kelas 2 (termasuk variasi 1A, 2B, dll., bukan 10/11/12) */
+  static isKelas1Or2(kelas: string): boolean {
+    const norm = this.normalizeKelasKey(kelas);
+    return /^1(\D|$)/.test(norm) || /^2(\D|$)/.test(norm);
+  }
+
   /**
    * Saring jadwal hanya untuk kelas yang masih ada siswa belum isi.
    * Fallback: jika tidak ada yang cocok (beda penulisan kelas), tampilkan semua
@@ -737,7 +743,10 @@ export class MutabaahService {
     // 4. Susun hasil akhir per guru
     const result: ReturnType<typeof this.getBroadcastStatus> = [];
     for (const [key, entry] of statusMap) {
-      const belumList = entry.siswa.filter(s => !isFilled(String(s.ID_Siswa).trim()));
+      let belumList = entry.siswa.filter(s => !isFilled(String(s.ID_Siswa).trim()));
+      if (mode !== 'normal' && hari === 'SABTU') {
+        belumList = belumList.filter(s => !this.isKelas1Or2(s.Kelas));
+      }
       const sudahList = entry.siswa.filter(s => isFilled(String(s.ID_Siswa).trim()));
       belumList.sort((a, b) => this.compareSiswaByKelasNama(a, b));
       sudahList.sort((a, b) => this.compareSiswaByKelasNama(a, b));
