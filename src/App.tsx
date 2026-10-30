@@ -127,19 +127,40 @@ export default function App() {
   // Kirim diam saat internet nyambung lagi + pantau status online untuk badge Header
   useEffect(() => {
     const updateOnline = () => setIsOnline(navigator.onLine);
+    const runAutoSync = () => {
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        MutabaahService.retryPendingLogs()
+          .then(() => setPendingCount(MutabaahService.getPendingLogsCount()))
+          .catch(() => setPendingCount(MutabaahService.getPendingLogsCount()));
+      }
+    };
+
     const handleOnline = () => {
       updateOnline();
-      MutabaahService.retryPendingLogs()
-        .then(() => setPendingCount(MutabaahService.getPendingLogsCount()))
-        .catch(() => setPendingCount(MutabaahService.getPendingLogsCount()));
+      runAutoSync();
     };
     const handleOffline = () => updateOnline();
     updateOnline();
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+
+    // Auto-sync background interval (every 3 minutes) & tab visibility change
+    const intervalId = window.setInterval(runAutoSync, 3 * 60 * 1000);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        runAutoSync();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
     };
   }, []);
 

@@ -180,6 +180,8 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
         text += `• ${line}\n`;
       });
     }
+    text += `\n📌 *Link Aplikasi Mutabaah:*\n`;
+    text += `🔗 https://mutabaah-aw29.vercel.app/\n`;
     text += `\n📌 *Sudah input tetapi masih terdata belum isi?*\n`;
     text += `Klik tombol *Sync* di aplikasi Mutabaah agar data terbaru dimuat.\n`;
     text += `\nSyukran, jazaakumullahu khairan atas perhatian dan kerjasamanya.\n\n`;
@@ -220,6 +222,8 @@ export const BroadcastReminderModal: React.FC<BroadcastReminderModalProps> = ({
         const kurang = g.totalSiswa - g.sudahIsi;
         text += `${i + 1}. ${greetingFor(g.namaGuru, g.genderGuru)} — ${g.sudahIsi}/${g.totalSiswa} siswa (kurang ${kurang})\n`;
       });
+      text += `\n📌 *Link Aplikasi Mutabaah:*\n`;
+      text += `🔗 https://mutabaah-aw29.vercel.app/\n`;
       text += `\n📌 *Catatan:* Jika sudah input tetapi masih terdata belum isi,\n`;
       text += `klik tombol *Sync* di aplikasi Mutabaah.\n`;
       text += `\nMohon berkenan menyusul pengisiannya. 🙏\n\n`;
