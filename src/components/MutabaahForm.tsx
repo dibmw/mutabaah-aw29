@@ -641,9 +641,6 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                   <span className="text-[11px] font-bold">Tahsin</span>
                   <BookOpen className="w-3.5 h-3.5 text-sky-400" />
                 </div>
-                <span className={`text-[10px] block mt-1 ${setoranChoice === 'tahsin' ? 'text-blue-200' : 'text-slate-500'}`}>
-                  Al-Qur'an / Iqro
-                </span>
               </button>
 
               {/* Option 2: Tahfidh (Hanya dimunculkan untuk input individu 1 siswa) */}
@@ -665,9 +662,6 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                     <span className="text-[11px] font-bold">Tahfidh</span>
                     <Award className="w-3.5 h-3.5 text-amber-200" />
                   </div>
-                  <span className={`text-[10px] block mt-1 ${setoranChoice === 'tahfidh' ? 'text-amber-100' : 'text-slate-500'}`}>
-                    Hafalan / Muroja'ah
-                  </span>
                 </button>
               )}
 
@@ -688,9 +682,6 @@ export const MutabaahForm: React.FC<MutabaahFormProps> = ({
                   <span className="text-[11px] font-bold">Tajwid</span>
                   <Sparkles className="w-3.5 h-3.5 text-purple-300" />
                 </div>
-                <span className={`text-[10px] block mt-1 ${setoranChoice === 'tajwid' ? 'text-purple-200' : 'text-slate-500'}`}>
-                  Metode Asy-Syafi'i
-                </span>
               </button>
             </div>
           </div>

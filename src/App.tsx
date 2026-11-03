@@ -20,6 +20,7 @@ import { BroadcastReminderModal } from './components/BroadcastReminderModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { UpdateBanner } from './components/UpdateBanner';
+import { BookOpen, History } from 'lucide-react';
 
 export default function App() {
   // Current User Session
@@ -57,6 +58,9 @@ export default function App() {
   // Edit & Delete Log State
   const [editingLog, setEditingLog] = useState<LogMutabaah | null>(null);
   const [deleteTargetLog, setDeleteTargetLog] = useState<LogMutabaah | null>(null);
+
+  // Main Tab: form input vs riwayat perkembangan
+  const [activeMainTab, setActiveMainTab] = useState<'form' | 'history'>('form');
 
   // Auto-refresh: cek versi build + refresh mingguan Senin 00:00 WIB
   const { updateAvailable, dismiss: dismissVersionUpdate, reload: reloadForVersionUpdate } = useAppVersion();
@@ -477,6 +481,8 @@ export default function App() {
     if (student && !selectedSiswaList.some(s => s.ID_Siswa === log.ID_Siswa)) {
       setSelectedSiswaList([student]);
     }
+    // Pindah ke tab form agar form edit langsung terlihat
+    setActiveMainTab('form');
     // Scroll to form
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [siswaList, selectedSiswaList]);
@@ -528,11 +534,37 @@ export default function App() {
           onSelectSiswaList={setSelectedSiswaList}
         />
 
-        {/* DUAL-PANEL LAYOUT ON THE SAME PAGE */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          
-          {/* PANEL A: FORM INPUT MUTABAAH (Left Column) */}
-          <div className="lg:col-span-6 space-y-4">
+        {/* MAIN TABS: FORM INPUT vs RIWAYAT PERKEMBANGAN */}
+        <div className="flex gap-1.5 p-1.5 bg-white rounded-xl border border-slate-200 shadow-sm mb-4">
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('form')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs sm:text-sm font-extrabold transition-all ${
+              activeMainTab === 'form'
+                ? 'bg-[#1E3A8A] text-white shadow-md'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            Form Input Mutabaah
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('history')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs sm:text-sm font-extrabold transition-all ${
+              activeMainTab === 'history'
+                ? 'bg-[#1E3A8A] text-white shadow-md'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <History className="w-4 h-4" />
+            Riwayat Perkembangan
+          </button>
+        </div>
+
+        {/* TAB CONTENT */}
+        {activeMainTab === 'form' ? (
+          <div className="max-w-3xl mx-auto">
             <MutabaahForm
               selectedSiswaList={selectedSiswaList}
               suratList={suratList}
@@ -543,9 +575,8 @@ export default function App() {
               onCancelEdit={handleCancelEdit}
             />
           </div>
-
-          {/* PANEL B: PANEL SUMMARY & RIWAYAT PERKEMBANGAN (Right Column) */}
-          <div className="lg:col-span-6 space-y-4">
+        ) : (
+          <div className="max-w-5xl mx-auto">
             <MutabaahSummaryAndHistory
               selectedSiswaList={selectedSiswaList}
               logs={recentLogs}
@@ -555,8 +586,7 @@ export default function App() {
               onDeleteLog={handleDeleteLog}
             />
           </div>
-
-        </div>
+        )}
 
       </main>
 
