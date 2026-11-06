@@ -2,6 +2,7 @@ import { MasterUser, MasterSiswa, MasterSurat, LogMutabaah, MutabaahFormData, St
 import { INITIAL_USERS, INITIAL_SISWA, INITIAL_LOGS } from '../data/initialData';
 import { MASTER_SURAT } from '../data/masterSurat';
 import { getJakartaWeekId } from '../utils/weeklyRefresh';
+import { FirebaseService } from './firebaseService';
 
 const SPREADSHEET_ID = "1wJMBxsQD4u_shFefiDeTpJYqgB8y1InC7De2XpXysCE";
 const DEFAULT_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxgCPxeO62MewnbWBkYt9NYS157YHyT8-4ieS5ZLM9tqNFhHzgWdCFApM-Xiwea7o3a/exec";
@@ -795,6 +796,8 @@ export class MutabaahService {
     if (idx === -1) return null;
     logs[idx] = { ...logs[idx], ...updates };
     localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(logs));
+    // Simpan instan ke Firebase Firestore
+    FirebaseService.updateLog(id, updates).catch(err => console.warn('[Firebase] Update error:', err));
     // Masuk antrian dulu (enqueue-first), lalu coba kirim. Retry yang menentukan sukses.
     this.addToPendingActions([{ action: 'update', log: logs[idx], timestamp: logs[idx].Timestamp }]);
     this.sendUpdateToWebhook(logs[idx]);
@@ -806,6 +809,8 @@ export class MutabaahService {
     const filtered = logs.filter(l => l.ID_Log !== id);
     if (filtered.length === logs.length) return false;
     localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(filtered));
+    // Hapus di Firebase Firestore
+    FirebaseService.deleteLog(id).catch(err => console.warn('[Firebase] Delete error:', err));
     // Masuk antrian dulu agar tidak hilang saat offline
     this.addToPendingActions([{ action: 'delete', log: { ID_Log: id } as LogMutabaah, timestamp: this.getWIBTimestamp() }]);
     this.sendDeleteToWebhook(id);
@@ -971,9 +976,13 @@ export class MutabaahService {
     const updatedLogs = [...newLogs, ...currentLogs];
     localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(updatedLogs));
 
-    // Enqueue-first agar batch offline tidak hilang saat Sync menimpa dari Sheet
+    // 1. Simpan instan ke Firebase Firestore (latensi <100ms, offline persistent via IndexedDB)
+    FirebaseService.saveLogs(newLogs).catch(err => console.warn('[Firebase] Background save error:', err));
+
+    // 2. Enqueue-first agar batch offline tidak hilang saat Sync menimpa dari Sheet
     this.addToPendingActions(newLogs.map(l => ({ action: 'create' as const, log: l, timestamp: l.Timestamp })));
-    // Kirim webhook secara sekuensial dengan jeda agar Google Apps Script tidak kewalahan / terkena limit koneksi browser (6 HTTP requests)
+    
+    // 3. Kirim webhook batch ke Google Sheets dengan keepalive: true
     this.sendLogsSequentially(newLogs);
 
     return newLogs;
@@ -1012,6 +1021,15 @@ export class MutabaahService {
 
   static getPendingLogsCount(): number {
     return this.getPendingActions().length;
+  }
+
+  static getPendingLogIds(): Set<string> {
+    try {
+      const actions = this.getPendingActions();
+      return new Set(actions.map(a => String(a.log?.ID_Log)).filter(Boolean));
+    } catch {
+      return new Set();
+    }
   }
 
   private static savePendingActions(actions: PendingAction[]): void {
@@ -1106,54 +1124,71 @@ export class MutabaahService {
     const pending = this.getPendingActions();
     if (pending.length === 0) return { success: 0, failed: 0 };
 
+    // Pastikan semua pending create juga tersimpan ke Firebase Firestore
+    const pendingCreates = pending.filter(a => a.action === 'create').map(a => a.log);
+    if (pendingCreates.length > 0) {
+      FirebaseService.saveLogs(pendingCreates).catch(e => console.warn('[Firebase] Retry save error:', e));
+    }
+
     const url = this.getWebhookUrl();
     if (!url) return { success: 0, failed: pending.length };
 
     let success = 0;
     let failed = 0;
     const stillPending: PendingAction[] = [];
-    const CHUNK_SIZE = 3;
 
-    for (let i = 0; i < pending.length; i += CHUNK_SIZE) {
-      const chunk = pending.slice(i, i + CHUNK_SIZE);
-      const results = await Promise.allSettled(
-        chunk.map(action => {
-          if (action.action === 'delete') {
-            return fetch(url, {
-              method: 'POST',
-              mode: 'no-cors',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              body: JSON.stringify({ _action: 'delete', ID_Log: action.log.ID_Log })
-            });
-          }
-          if (action.action === 'update') {
-            return fetch(url, {
-              method: 'POST',
-              mode: 'no-cors',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              body: JSON.stringify({ _action: 'update', ...action.log })
-            });
-          }
-          return fetch(url, {
+    // Pisahkan: kirim 'create' dalam batch 25 item, 'update'/'delete' per item
+    const createActions = pending.filter(a => a.action === 'create');
+    const otherActions = pending.filter(a => a.action !== 'create');
+
+    // 1. Kirim Batch Create
+    const BATCH_SIZE = 25;
+    for (let i = 0; i < createActions.length; i += BATCH_SIZE) {
+      const chunk = createActions.slice(i, i + BATCH_SIZE);
+      try {
+        await fetch(url, {
+          method: 'POST',
+          mode: 'no-cors',
+          keepalive: true,
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ records: chunk.map(a => a.log) })
+        });
+        success += chunk.length;
+      } catch (err) {
+        console.warn('Batch retry post failed:', err);
+        failed += chunk.length;
+        stillPending.push(...chunk);
+      }
+      if (i + BATCH_SIZE < createActions.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
+    // 2. Kirim Update / Delete
+    for (const action of otherActions) {
+      try {
+        if (action.action === 'delete') {
+          await fetch(url, {
             method: 'POST',
             mode: 'no-cors',
+            keepalive: true,
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(action.log)
+            body: JSON.stringify({ _action: 'delete', ID_Log: action.log.ID_Log })
           });
-        })
-      );
-
-      results.forEach((result, idx) => {
-        if (result.status === 'fulfilled') {
-          success++;
-        } else {
-          failed++;
-          stillPending.push(chunk[idx]);
+        } else if (action.action === 'update') {
+          await fetch(url, {
+            method: 'POST',
+            mode: 'no-cors',
+            keepalive: true,
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ _action: 'update', ...action.log })
+          });
         }
-      });
-
-      if (i + CHUNK_SIZE < pending.length) {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        success++;
+      } catch (err) {
+        console.warn(`Action ${action.action} failed:`, err);
+        failed++;
+        stillPending.push(action);
       }
     }
 
@@ -1221,6 +1256,7 @@ export class MutabaahService {
       await fetch(url, {
         method: 'POST',
         mode: 'no-cors',
+        keepalive: true,
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(log)
       });
@@ -1237,6 +1273,7 @@ export class MutabaahService {
       await fetch(url, {
         method: 'POST',
         mode: 'no-cors',
+        keepalive: true,
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ _action: 'update', ...log })
       });
@@ -1253,6 +1290,7 @@ export class MutabaahService {
       await fetch(url, {
         method: 'POST',
         mode: 'no-cors',
+        keepalive: true,
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ _action: 'delete', ID_Log: logId })
       });
@@ -1267,31 +1305,29 @@ export class MutabaahService {
     const url = this.getWebhookUrl();
     if (!url || logs.length === 0) return;
 
-    const CHUNK_SIZE = 3;
+    // Batch kirim (hingga 25 siswa per request) dengan keepalive: true agar tidak terputus saat tab di HP pindah ke Home/background
+    const BATCH_SIZE = 25;
     const failedActions: PendingAction[] = [];
 
-    for (let i = 0; i < logs.length; i += CHUNK_SIZE) {
-      const chunk = logs.slice(i, i + CHUNK_SIZE);
-      const results = await Promise.allSettled(
-        chunk.map(log =>
-          fetch(url, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(log)
-          })
-        )
-      );
+    for (let i = 0; i < logs.length; i += BATCH_SIZE) {
+      const chunk = logs.slice(i, i + BATCH_SIZE);
+      try {
+        await fetch(url, {
+          method: 'POST',
+          mode: 'no-cors',
+          keepalive: true,
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ records: chunk })
+        });
+      } catch (err) {
+        console.warn(`Batch log post failed:`, err);
+        chunk.forEach(log => {
+          failedActions.push({ action: 'create', log, timestamp: log.Timestamp });
+        });
+      }
 
-      results.forEach((result, idx) => {
-        if (result.status === 'rejected') {
-          console.warn(`Log ${chunk[idx].ID_Log} post failed:`, result.reason);
-          failedActions.push({ action: 'create', log: chunk[idx], timestamp: chunk[idx].Timestamp });
-        }
-      });
-
-      if (i + CHUNK_SIZE < logs.length) {
-        await new Promise(resolve => setTimeout(resolve, 50));
+      if (i + BATCH_SIZE < logs.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
 

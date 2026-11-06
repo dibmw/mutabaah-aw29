@@ -8,3 +8,4 @@ coverage/
 !.env.example
 # Generated per-build (ditulis scripts/write-version.js sebelum vite build)
 /public/version.json
+.opencode/

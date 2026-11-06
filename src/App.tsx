@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MasterUser, MasterSiswa, MasterSurat, LogMutabaah, StudentSummary, MutabaahFormData } from './types';
 import { MutabaahService } from './services/mutabaahService';
+import { FirebaseService } from './services/firebaseService';
 import { useAppVersion } from './hooks/useAppVersion';
 import {
   getJakartaWeekId,
@@ -20,7 +21,7 @@ import { BroadcastReminderModal } from './components/BroadcastReminderModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { UpdateBanner } from './components/UpdateBanner';
-import { BookOpen, History } from 'lucide-react';
+import { BookOpen, History, RefreshCw } from 'lucide-react';
 
 export default function App() {
   // Current User Session
@@ -122,6 +123,13 @@ export default function App() {
       }
     } catch { /* abaikan */ }
     setPendingCount(MutabaahService.getPendingLogsCount());
+    // Backup data lokal yang ada ke Firebase Firestore di latar belakang
+    try {
+      const localLogs = MutabaahService.getLogs();
+      if (localLogs.length > 0) {
+        FirebaseService.saveLogs(localLogs.slice(0, 300)).catch(() => {});
+      }
+    } catch { /* abaikan */ }
     // Kirim diam (tanpa toast) agar angka antrian berkurang sendiri saat online
     MutabaahService.retryPendingLogs()
       .then(() => setPendingCount(MutabaahService.getPendingLogsCount()))
@@ -167,6 +175,18 @@ export default function App() {
       window.removeEventListener('focus', handleVisibility);
     };
   }, []);
+
+  // Peringatan saat mencoba menutup tab jika ada antrian yang belum masuk Spreadsheet
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (pendingCount > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [pendingCount]);
 
   // Refresh mingguan: anchor Senin 00:00 WIB (weekId = tanggal Senin pekan berjalan)
   const isBusyForRefresh = useCallback(() => {
@@ -523,6 +543,26 @@ export default function App() {
         onOpenReportWA={() => setIsReportModalOpen(true)}
         onOpenBroadcast={() => setIsBroadcastOpen(true)}
       />
+
+      {/* Sticky Banner jika ada antrian yang belum terkirim ke Spreadsheet */}
+      {pendingCount > 0 && (
+        <div className="bg-amber-500 text-amber-950 px-4 py-2 text-xs sm:text-sm font-semibold flex items-center justify-between gap-3 shadow-sm border-b border-amber-600/20">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-base shrink-0 animate-pulse">⏳</span>
+            <span className="truncate text-amber-950">
+              Ada <strong>{pendingCount}</strong> data tersimpan di HP & Firebase yang belum masuk ke Spreadsheet admin.
+            </span>
+          </div>
+          <button
+            onClick={handleSyncSheets}
+            disabled={isSyncing}
+            className="shrink-0 bg-white text-amber-950 font-bold px-3 py-1 rounded-lg shadow-sm hover:bg-amber-50 active:scale-95 transition-all text-xs disabled:opacity-50 flex items-center gap-1.5 border border-amber-300"
+          >
+            <RefreshCw className={`w-3 h-3 text-[#1E3A8A] ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? 'Kirim...' : 'Kirim Sekarang'}
+          </button>
+        </div>
+      )}
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">

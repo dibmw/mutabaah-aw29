@@ -144,6 +144,11 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
   // Sub-tab & filter jenis
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('tahsin');
   const [filterJenis, setFilterJenis] = useState<string>('all');
+  const [pendingIds, setPendingIds] = useState<Set<string>>(() => MutabaahService.getPendingLogIds());
+
+  useEffect(() => {
+    setPendingIds(MutabaahService.getPendingLogIds());
+  }, [logs]);
 
   useEffect(() => {
     setSheetLogs(null);
@@ -384,6 +389,15 @@ export const MutabaahSummaryAndHistory: React.FC<MutabaahSummaryAndHistoryProps>
                           </span>
                         );
                       })()}
+                      {pendingIds.has(String(log.ID_Log)) ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100/90 border border-amber-300 px-2 py-0.5 rounded-full mt-1.5" title="Data tersimpan di HP & Firebase, sedang menunggu antrian masuk Google Sheet">
+                          ⏳ Antri ke Sheet
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full mt-1.5" title="Data sudah tercatat di Google Sheets">
+                          ☁️ Masuk Sheet
+                        </span>
+                      )}
                     </td>
 
                     {/* Guru Penginput */}
